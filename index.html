@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0a0a1a">
+  <title>Space Shooter</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="./img/logo401.jpg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style type="text/css" media="all">
+    :root {
+      --space-dark: #050410;
+      --space-mid: #0d0a28;
+      --space-light: #1a1540;
+      --accent: #00d4ff;
+      --accent-dim: rgba(0, 212, 255, 0.4);
+      --glass: rgba(255, 255, 255, 0.06);
+      --glass-border: rgba(255, 255, 255, 0.12);
+      --text: #e8e8ff;
+      --text-dim: rgba(232, 232, 255, 0.8);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      overflow: hidden;
+      min-height: 100vh;
+      min-width: 100vw;
+      font-family: 'Rajdhani', sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    body {
+      background: linear-gradient(165deg, #050410 0%, #0a0820 25%, #0d0a28 50%, #080618 75%, #040310 100%);
+      background-size: 200% 200%;
+      animation: galactic-drift 18s ease-in-out infinite;
+      color: var(--text);
+    }
+
+    @keyframes galactic-drift {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
+
+    #GameScreen {
+      display: block;
+      width: 100%;
+      height: 100%;
+      background: transparent;
+      flex: 1;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+
+
+    .glow-overlay {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background: radial-gradient(ellipse 120% 80% at 50% 30%, rgba(80, 50, 140, 0.06) 0%, transparent 50%);
+      animation: glow-pulse 8s ease-in-out infinite;
+      z-index: 1;
+    }
+
+    @keyframes glow-pulse {
+      0%, 100% { opacity: 0.6; }
+      50% { opacity: 1; }
+    }
+  </style>
+</head>
+
+<body>
+  <canvas id="GameScreen" width="1000" height="800"></canvas>
+
+  <div class="glow-overlay"></div>
+  <script src="src/main.js" type="module"></script>
+</body>
+
+</html>
