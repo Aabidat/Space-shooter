@@ -14,7 +14,7 @@ import Load from "/src/load.js";
 import ShieldPack from "/src/shieldPack.js";
 import Background from "/src/background.js";
 import Explosion from "/src/explosion.js";
-import { playShoot, playExplosion, playCollect, playGameOver, playBossExplosion, playLevelUp, playVictory } from "/src/sounds.js";
+import { playShoot, playExplosion, playCollect, playGameOver, playBossExplosion, playLevelUp, playVictory, startEngine, stopEngine } from "/src/sounds.js";
 
 // ─── Canvas Setup ────────────────────────────────────────────────────────────
 const GameScreen = document.getElementById("GameScreen");
@@ -114,9 +114,9 @@ new InputHanderler(paddle, GameWidth, GameScreen, GameHeight);
 
 // ─── Screen-transition listeners ─────────────────────────────────────────────
 function handleStartTransition() {
-  if (gameState === "start")   { gameState = "playing"; return; }
-  if (gameState === "gameover"){ restartGame(); gameState = "playing"; return; }
-  if (gameState === "won")     { restartGame(); gameState = "playing"; return; }
+  if (gameState === "start")   { gameState = "playing"; startEngine(); return; }
+  if (gameState === "gameover"){ restartGame(); gameState = "playing"; startEngine(); return; }
+  if (gameState === "won")     { restartGame(); gameState = "playing"; startEngine(); return; }
 }
 document.addEventListener("keydown",    handleStartTransition);
 document.addEventListener("click",      handleStartTransition);
@@ -165,21 +165,21 @@ function spawnEnemy() {
   for (let i = 0; i < count; i++) {
     const roll = Math.random();
     let enemy;
-    if      (level <= 2)  enemy = roll < 0.25 ? new FastEnemy(GameWidth, enemyImg) : new Enemy(GameWidth, enemyImg);
-    else if (level <= 5)  enemy = roll < 0.50 ? new TankEnemy(GameWidth, enemyImg) : new Enemy(GameWidth, enemyImg);
+    if      (level <= 2)  enemy = roll < 0.25 ? new FastEnemy(GameWidth, enemyImg, level) : new Enemy(GameWidth, enemyImg, { level });
+    else if (level <= 5)  enemy = roll < 0.50 ? new TankEnemy(GameWidth, enemyImg, level) : new Enemy(GameWidth, enemyImg, { level });
     else if (level <= 8)  {
-      if      (roll < 0.40) enemy = new FastEnemy(GameWidth, enemyImg);
-      else if (roll < 0.65) enemy = new ZigzagEnemy(GameWidth, enemyImg);
-      else                  enemy = new Enemy(GameWidth, enemyImg);
+      if      (roll < 0.40) enemy = new FastEnemy(GameWidth, enemyImg, level);
+      else if (roll < 0.65) enemy = new ZigzagEnemy(GameWidth, enemyImg, level);
+      else                  enemy = new Enemy(GameWidth, enemyImg, { level });
     } else if (level <= 11) {
-      if      (roll < 0.35) enemy = new TankEnemy(GameWidth, enemyImg);
-      else if (roll < 0.65) enemy = new ZigzagEnemy(GameWidth, enemyImg);
-      else                  enemy = new Enemy(GameWidth, enemyImg);
+      if      (roll < 0.35) enemy = new TankEnemy(GameWidth, enemyImg, level);
+      else if (roll < 0.65) enemy = new ZigzagEnemy(GameWidth, enemyImg, level);
+      else                  enemy = new Enemy(GameWidth, enemyImg, { level });
     } else {
-      if      (roll < 0.25) enemy = new FastEnemy(GameWidth, enemyImg);
-      else if (roll < 0.45) enemy = new TankEnemy(GameWidth, enemyImg);
-      else if (roll < 0.70) enemy = new ZigzagEnemy(GameWidth, enemyImg);
-      else                  enemy = new Enemy(GameWidth, enemyImg);
+      if      (roll < 0.25) enemy = new FastEnemy(GameWidth, enemyImg, level);
+      else if (roll < 0.45) enemy = new TankEnemy(GameWidth, enemyImg, level);
+      else if (roll < 0.70) enemy = new ZigzagEnemy(GameWidth, enemyImg, level);
+      else                  enemy = new Enemy(GameWidth, enemyImg, { level });
     }
     enemies.push(enemy);
   }
@@ -479,7 +479,7 @@ function gameLoop(timestamp) {
 
     // Paddle collision
     if (collision(paddle, enemies[i])) {
-      explosions.push(new Explosion(enemies[i].position.x + enemies[i].width / 2, enemies[i].position.y + enemies[i].height / 2, 1.2));
+      explosions.push(new Explosion(enemies[i].position.x + enemies[i].width / 2, enemies[i].position.y + enemies[i].height / 2, 1.2, getTheme(level).bgHue));
       if (!shieldActive) health -= enemies[i].health === enemies[i].maxHealth ? 20 : 8;
       playExplosion();
       enemies.splice(i, 1); continue;
@@ -499,7 +499,7 @@ function gameLoop(timestamp) {
           enemies[i].health -= mult * shooterPower;
           arr.splice(x, 1);
           if (enemies[i].health <= 0) {
-            explosions.push(new Explosion(enemies[i].position.x + enemies[i].width / 2, enemies[i].position.y + enemies[i].height / 2, 0.8));
+            explosions.push(new Explosion(enemies[i].position.x + enemies[i].width / 2, enemies[i].position.y + enemies[i].height / 2, 0.8, getTheme(level).bgHue));
             score += enemies[i].maxHealth >= 3 ? 25 : 10;
             enemiesKilled++; updateShooterPower(); playExplosion();
             enemies.splice(i, 1); killed = true;
@@ -517,7 +517,7 @@ function gameLoop(timestamp) {
     mEnemies[i].update(deltaTime);
 
     if (collision(paddle, mEnemies[i])) {
-      explosions.push(new Explosion(mEnemies[i].position.x + mEnemies[i].width / 2, mEnemies[i].position.y + mEnemies[i].height / 2, 2));
+      explosions.push(new Explosion(mEnemies[i].position.x + mEnemies[i].width / 2, mEnemies[i].position.y + mEnemies[i].height / 2, 2, getTheme(level).bgHue));
       if (!shieldActive) health -= mEnemies[i].health === mEnemies[i].maxHealth ? 60 : 25;
       playBossExplosion(); mEnemies.splice(i, 1); continue;
     }
@@ -534,7 +534,7 @@ function gameLoop(timestamp) {
           mEnemies[i].health -= mult * shooterPower;
           arr.splice(x, 1);
           if (mEnemies[i].health <= 0) {
-            explosions.push(new Explosion(mEnemies[i].position.x + mEnemies[i].width / 2, mEnemies[i].position.y + mEnemies[i].height / 2, 2.5));
+            explosions.push(new Explosion(mEnemies[i].position.x + mEnemies[i].width / 2, mEnemies[i].position.y + mEnemies[i].height / 2, 2.5, getTheme(level).bgHue));
             score += 100;
             const wasFinal = mEnemies[i].isFinal;
             playBossExplosion(); mEnemies.splice(i, 1); enemiesKilled++; updateShooterPower();
@@ -622,7 +622,7 @@ function gameLoop(timestamp) {
   // ── Level-up check ───────────────────────────────────────────────────────
   if (score >= scoreForNextLevel) {
     if (level < FINAL_LEVEL) {
-      level++;
+      level++; paddle.setLevel(level);
       playLevelUp(); updateShooterPower();
       scoreForNextLevel += 1000;
       zoneBannerUntil = timestamp + 2800;
@@ -638,7 +638,7 @@ function gameLoop(timestamp) {
   if (health <= 0 && !died) {
     died = true;
     if (score > highScore) { highScore = score; localStorage.setItem("spaceShooterHighScore", String(highScore)); }
-    gameState = "gameover"; stopHoldShoot(); playGameOver();
+    gameState = "gameover"; stopHoldShoot(); stopEngine(); playGameOver();
   }
 
   requestAnimationFrame(gameLoop);
