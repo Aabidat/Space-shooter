@@ -1,0 +1,17 @@
+{
+  "name": "Space Shooter",
+  "short_name": "SpaceShooter",
+  "description": "A fast-paced space shooter game with 15 unique sectors.",
+  "start_url": "./index.html",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#050410",
+  "theme_color": "#0a0a1a",
+  "icons": [
+    {
+      "src": "./img/logo401.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg"
+    }
+  ]
+}
