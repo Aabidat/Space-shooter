@@ -265,6 +265,35 @@ function roundedRect(ctx, x, y, w, h, r) {
 function updateShooterPower() {
   shooterPower = Math.min(3.0, 1.0 + (level - 1) * 0.15 + enemiesKilled * 0.02);
 }
+function getDifficultyScale() {
+  return Math.min(2.2, 1 + (level - 1) * 0.06);
+}
+function getEnemySpeedScale() {
+  return Math.min(1.9, 1 + (level - 1) * 0.04);
+}
+function getEnemyHealthScale() {
+  return Math.min(2.6, 1 + (level - 1) * 0.12);
+}
+function applyEnemyScaling(enemy) {
+  const healthScale = getEnemyHealthScale();
+  const speedScale = getEnemySpeedScale();
+  enemy.health = Math.max(1, enemy.health * healthScale);
+  enemy.maxHealth = Math.max(1, (enemy.maxHealth ?? enemy.health) * healthScale);
+  enemy.speed *= speedScale;
+}
+function applyBossScaling(boss, isFinal) {
+  const healthScale = Math.min(isFinal ? 3.0 : 2.0, 1 + (level - 1) * (isFinal ? 0.12 : 0.08));
+  const speedScale = Math.min(isFinal ? 2.2 : 1.6, 1 + (level - 1) * (isFinal ? 0.05 : 0.03));
+  boss.health = Math.max(1, boss.health * healthScale);
+  boss.maxHealth = boss.health;
+  boss.speed *= speedScale;
+
+  const baseCadence = boss.fireCadenceMs ?? (isFinal ? 820 : 1300);
+  boss.fireCadenceMs = Math.max(isFinal ? 560 : 900, baseCadence - level * (isFinal ? 10 : 8));
+  boss.spreadDeg = isFinal ? 70 : 45;
+  boss.multiShotChance = isFinal ? 0.7 : 0.3;
+  boss.bulletSpeed = isFinal ? 165 : 120;
+}
 function getDamageMultiplier() {
   return shooterPower * damageBoostBase * (powerBoostActive ? powerBoostMult : 1);
 }
@@ -350,13 +379,13 @@ let lastStarSpawn   = 0;
 function getSpawnInterval() {
   const base = 980 - (level - 1) * 34;
   const jitter = Math.random() * 90;
-  return Math.max(420, base + jitter);
+  return Math.max(360, (base + jitter) / getDifficultyScale());
 }
 
 function spawnEnemy() {
   if (gameState !== "playing") return;
   // FIX: Hard cap on screen enemies to keep game playable
-  const maxOnScreen = Math.min(6 + level * 1.5, 18);
+  const maxOnScreen = Math.min(6 + level * 1.6, 22) + Math.floor((level - 1) / 6);
   if (enemies.length >= maxOnScreen) return;
   if (level <= 2 && Math.random() > 0.55) return;
 
@@ -383,6 +412,7 @@ function spawnEnemy() {
       else if (roll < 0.70) enemy = new ZigzagEnemy(GameWidth, enemyImg, level);
       else                  enemy = new Enemy(GameWidth, enemyImg, { level });
     }
+    applyEnemyScaling(enemy);
     enemies.push(enemy);
   }
 }
@@ -392,14 +422,17 @@ function spawnMEnemy() {
   if (level === FINAL_LEVEL) {
     if (!finalBossSpawned) {
       let boss = new MEnemy(GameWidth, bossImg);
-      boss.health = 200; boss.maxHealth = 200;
-      boss.width = 220; boss.height = 220; boss.speed = 20; boss.isFinal = true;
+      boss.health = 260; boss.maxHealth = 260;
+      boss.width = 240; boss.height = 240; boss.speed = 24; boss.isFinal = true;
+      applyBossScaling(boss, true);
       mEnemies.push(boss); finalBossSpawned = true;
     }
     return;
   }
   if (level === 1 || mEnemies.length >= 2) return;
-  mEnemies.push(new MEnemy(GameWidth, bossImg));
+  const miniBoss = new MEnemy(GameWidth, bossImg);
+  applyBossScaling(miniBoss, false);
+  mEnemies.push(miniBoss);
 }
 
 function spawnHealth() { if (gameState === "playing") healthPacks.push(new HealthPack(GameWidth, healthImg)); }
@@ -655,14 +688,15 @@ function drawBossTelegraph(boss, timestamp, theme) {
 function bossFire(boss, target, timestamp) {
   if (!boss.nextShotAt) boss.nextShotAt = 0;
   if (!boss.pendingShots) boss.pendingShots = 0;
-  const cadence = boss.isFinal ? 820 : 1300;
+  const cadence = boss.fireCadenceMs ?? (boss.isFinal ? 820 : 1300);
   if (timestamp >= boss.nextShotAt && boss.pendingShots === 0) {
     boss.telegraphUntil = timestamp + 320;
-    boss.pendingShots = boss.isFinal && Math.random() < 0.5 ? 2 : 1;
+    const multiChance = boss.multiShotChance ?? (boss.isFinal ? 0.5 : 0.0);
+    boss.pendingShots = Math.random() < multiChance ? 2 : 1;
     boss.nextShotAt = timestamp + cadence;
   }
   if (boss.pendingShots > 0 && timestamp >= boss.telegraphUntil) {
-    const spread = boss.isFinal ? 60 : 35;
+    const spread = boss.spreadDeg ?? (boss.isFinal ? 60 : 35);
     for (let i = 0; i < boss.pendingShots; i++) {
       const offset = boss.pendingShots > 1 ? (i === 0 ? -spread : spread) : 0;
       const fakeTarget = {

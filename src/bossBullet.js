@@ -14,7 +14,7 @@ export default class BossBullet {
     this.vx = dx / len;
     this.vy = dy / len;
 
-    this.speed = boss.isFinal ? 140 : 110;
+    this.speed = boss.bulletSpeed ?? (boss.isFinal ? 140 : 110);
   }
 
   draw(ctx) {
