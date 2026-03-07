@@ -113,6 +113,8 @@ let powerBoostMult = 1.35;
 let fireBoostMult = 0.8;
 let powerBoostDurationMs = 10000;
 let shootIntervalId = null;
+let autoShootEnabled = false;
+let holdShootActive = false;
 let baseShootIntervalMs = 200;
 let level = 1;
 let scoreForNextLevel = 1400;
@@ -166,8 +168,41 @@ function createPauseButton() {
   document.body.appendChild(btn);
 }
 
+function createAutoShootButton() {
+  if (document.getElementById("autoShootBtn")) return;
+  const btn = document.createElement("button");
+  btn.id = "autoShootBtn";
+  Object.assign(btn.style, {
+    position: "fixed", top: "16px", right: "68px", zIndex: "100",
+    minWidth: "92px", height: "44px", padding: "0 12px", borderRadius: "12px",
+    border: "1.5px solid rgba(255,255,255,0.16)",
+    background: "rgba(8,6,24,0.76)", backdropFilter: "blur(14px)",
+    color: "rgba(255,255,255,0.82)", cursor: "pointer",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    transition: "all 0.16s ease",
+    boxShadow: "0 4px 22px rgba(0,0,0,0.45)", outline: "none",
+    font: "700 11px Orbitron, sans-serif",
+    letterSpacing: "0.8px",
+  });
+  btn.addEventListener("mouseenter", () => {
+    if (autoShootEnabled) return;
+    btn.style.background = "rgba(0,212,255,0.16)";
+    btn.style.borderColor = "rgba(0,212,255,0.55)";
+    btn.style.color = "#00d4ff";
+  });
+  btn.addEventListener("mouseleave", () => updateAutoShootButton());
+  btn.addEventListener("click", (e) => { e.stopPropagation(); toggleAutoShoot(); });
+  document.body.appendChild(btn);
+  updateAutoShootButton();
+}
+
 function removePauseButton() {
   const btn = document.getElementById("pauseBtn");
+  if (btn) btn.remove();
+}
+
+function removeAutoShootButton() {
+  const btn = document.getElementById("autoShootBtn");
   if (btn) btn.remove();
 }
 
@@ -186,23 +221,24 @@ function getPlayIcon() {
 
 function togglePause() {
   if (gameState === "playing") {
-    paused = true; gameState = "paused"; stopHoldShoot();
+    paused = true; gameState = "paused"; stopHoldShoot(true);
     const btn = document.getElementById("pauseBtn");
     if (btn) { btn.innerHTML = getPlayIcon(); btn.title = "Resume (P / Esc)"; }
   } else if (gameState === "paused") {
     paused = false; gameState = "playing";
     const btn = document.getElementById("pauseBtn");
     if (btn) { btn.innerHTML = getPauseIcon(); btn.title = "Pause (P / Esc)"; }
+    if (autoShootEnabled) startShootLoop();
   }
 }
 
 // ─── Screen-transition listeners ─────────────────────────────────────────────
 function handleStartTransition(e) {
-  if (e && e.target && e.target.id === "pauseBtn") return;
+  if (e && e.target && (e.target.id === "pauseBtn" || e.target.id === "autoShootBtn")) return;
   if (gameState === "upgrade") return;
-  if (gameState === "start")    { gameState = "playing"; startEngine(); createPauseButton(); startLevel(performance.now()); return; }
-  if (gameState === "gameover") { restartGame(); gameState = "playing"; startEngine(); createPauseButton(); startLevel(performance.now()); return; }
-  if (gameState === "won")      { restartGame(); gameState = "playing"; startEngine(); createPauseButton(); startLevel(performance.now()); return; }
+  if (gameState === "start")    { gameState = "playing"; startEngine(); createPauseButton(); createAutoShootButton(); startLevel(performance.now()); return; }
+  if (gameState === "gameover") { restartGame(); gameState = "playing"; startEngine(); createPauseButton(); createAutoShootButton(); startLevel(performance.now()); return; }
+  if (gameState === "won")      { restartGame(); gameState = "playing"; startEngine(); createPauseButton(); createAutoShootButton(); startLevel(performance.now()); return; }
 }
 document.addEventListener("keydown", (e) => {
   if (gameState === "upgrade") {
@@ -210,6 +246,13 @@ document.addEventListener("keydown", (e) => {
       handleUpgradeChoice(parseInt(e.key, 10) - 1, performance.now());
     }
     return;
+  }
+  if (e.key === "f" || e.key === "F") {
+    if (gameState === "playing" || gameState === "paused") {
+      e.preventDefault();
+      toggleAutoShoot();
+      return;
+    }
   }
   if (e.key === "Escape" || e.key === "p" || e.key === "P") {
     if (gameState === "playing" || gameState === "paused") { togglePause(); return; }
@@ -451,14 +494,53 @@ function fire() {
 function getShootIntervalMs() {
   return Math.max(110, baseShootIntervalMs * (powerBoostActive ? fireBoostMult : 1));
 }
+function startShootLoop(fireImmediately = false) {
+  if (gameState !== "playing") return;
+  if (fireImmediately) fire();
+  if (!shootIntervalId) {
+    shootIntervalId = setInterval(() => { if (gameState === "playing") fire(); }, getShootIntervalMs());
+  }
+}
+function resetShootLoopInterval() {
+  if (!shootIntervalId) return;
+  clearInterval(shootIntervalId);
+  shootIntervalId = setInterval(() => { if (gameState === "playing") fire(); }, getShootIntervalMs());
+}
+function updateAutoShootButton() {
+  const btn = document.getElementById("autoShootBtn");
+  if (!btn) return;
+  btn.textContent = autoShootEnabled ? "AUTO ON" : "AUTO OFF";
+  btn.title = `Toggle auto fire (F) — ${autoShootEnabled ? "On" : "Off"}`;
+  if (autoShootEnabled) {
+    btn.style.background = "rgba(0,212,255,0.2)";
+    btn.style.borderColor = "rgba(0,212,255,0.65)";
+    btn.style.color = "#00d4ff";
+  } else {
+    btn.style.background = "rgba(8,6,24,0.76)";
+    btn.style.borderColor = "rgba(255,255,255,0.16)";
+    btn.style.color = "rgba(255,255,255,0.82)";
+  }
+}
+function toggleAutoShoot(forceValue) {
+  autoShootEnabled = typeof forceValue === "boolean" ? forceValue : !autoShootEnabled;
+  updateAutoShootButton();
+  if (autoShootEnabled) {
+    startShootLoop(true);
+  } else if (!holdShootActive) {
+    stopHoldShoot();
+  }
+}
 function startHoldShoot() {
   if (gameState !== "playing") return;
-  fire();
-  if (!shootIntervalId)
-    shootIntervalId = setInterval(() => { if (gameState === "playing") fire(); }, getShootIntervalMs());
+  holdShootActive = true;
+  startShootLoop(!shootIntervalId);
 }
-function stopHoldShoot() {
-  if (shootIntervalId) { clearInterval(shootIntervalId); shootIntervalId = null; }
+function stopHoldShoot(force = false) {
+  holdShootActive = false;
+  if (shootIntervalId && (force || !autoShootEnabled)) {
+    clearInterval(shootIntervalId);
+    shootIntervalId = null;
+  }
 }
 GameScreen.addEventListener("mousedown",  startHoldShoot);
 GameScreen.addEventListener("mouseup",    stopHoldShoot);
@@ -570,6 +652,9 @@ function drawHUD(timestamp, theme) {
   ctx.fillStyle = "rgba(160,160,210,0.55)";
   ctx.font = "600 9px Orbitron, sans-serif";
   ctx.fillText("PWR " + shooterPower.toFixed(1) + "×", infoX + 110, pad + 53);
+  ctx.fillStyle = autoShootEnabled ? "#00d4ff" : "rgba(160,160,210,0.6)";
+  ctx.font = "700 8px Orbitron, sans-serif";
+  ctx.fillText("AUTO " + (autoShootEnabled ? "ON" : "OFF") + " (F)", infoX + 12, pad + 64);
 
   if (powerBoostActive) {
     const left = Math.max(0, (powerBoostEndTime - timestamp) / powerBoostDurationMs);
@@ -868,7 +953,7 @@ function drawStartScreen() {
 
   const lines = [
     ["🕹", "Hold & drag to move your ship"],
-    ["🔫", "Hold mouse or touch to auto-fire"],
+    ["🔫", "Hold mouse/touch to fire | F toggles auto-fire"],
     ["❤",  "Collect health packs to restore hull"],
     ["🛡",  "Collect shield packs for protection"],
     ["⚡",  "Power cores boost fire rate + damage"],
@@ -1005,10 +1090,7 @@ function applyUpgrade(id, timestamp) {
     powerBoostDurationMs = Math.min(15000, powerBoostDurationMs * 1.25);
   }
 
-  if (shootIntervalId) {
-    clearInterval(shootIntervalId);
-    shootIntervalId = setInterval(() => { if (gameState === "playing") fire(); }, getShootIntervalMs());
-  }
+  resetShootLoopInterval();
 
   gameState = "playing";
   startLevel(timestamp);
@@ -1177,7 +1259,7 @@ function gameLoop(timestamp) {
             playBossExplosion(); mEnemies.splice(i, 1); enemiesKilled++; recordKill(3, timestamp); updateShooterPower();
             if (wasFinal) {
               if (score > highScore) { highScore = score; localStorage.setItem("spaceShooterHighScore", String(highScore)); }
-              gameState = "won"; gameWon = true; playVictory(); removePauseButton();
+              gameState = "won"; gameWon = true; playVictory(); stopHoldShoot(true); removePauseButton(); removeAutoShootButton();
             }
           }
           break;
@@ -1223,10 +1305,7 @@ function gameLoop(timestamp) {
       powerBoostActive = true;
       powerBoostEndTime = timestamp + powerBoostDurationMs;
       playCollect();
-      if (shootIntervalId) {
-        clearInterval(shootIntervalId);
-        shootIntervalId = setInterval(() => { if (gameState === "playing") fire(); }, getShootIntervalMs());
-      }
+      resetShootLoopInterval();
       powerCores.splice(i, 1); continue;
     }
     if (powerCores[i].position.y > GameHeight) { powerCores.splice(i, 1); continue; }
@@ -1290,7 +1369,7 @@ function gameLoop(timestamp) {
       playLevelUp(); updateShooterPower();
       scoreForNextLevel += 1100;
       buildUpgradeOptions();
-      stopHoldShoot();
+      stopHoldShoot(true);
       gameState = "upgrade";
     } else {
       scoreForNextLevel += 999999;
@@ -1303,7 +1382,7 @@ function gameLoop(timestamp) {
   if (health <= 0 && !died) {
     died = true;
     if (score > highScore) { highScore = score; localStorage.setItem("spaceShooterHighScore", String(highScore)); }
-    gameState = "gameover"; stopHoldShoot(); stopEngine(); playGameOver(); removePauseButton();
+    gameState = "gameover"; stopHoldShoot(true); stopEngine(); playGameOver(); removePauseButton(); removeAutoShootButton();
   }
 
   requestAnimationFrame(gameLoop);
@@ -1330,6 +1409,9 @@ function restartGame() {
   baseShootIntervalMs = 200;
   shieldDurationMs = 12000;
   powerBoostDurationMs = 10000;
+  autoShootEnabled = false;
+  holdShootActive = false;
+  updateAutoShootButton();
   finalBossSpawned = false; gameWon = false; paused = false;
   objective = null; objectiveBannerUntil = 0; objectiveCompleteUntil = 0;
   shakeUntil = 0; shakeMagnitude = 0; hitFlashAlpha = 0;
