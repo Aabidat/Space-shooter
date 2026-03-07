@@ -14,6 +14,8 @@ import Load from "/src/load.js";
 import ShieldPack from "/src/shieldPack.js";
 import Background from "/src/background.js";
 import Explosion from "/src/explosion.js";
+import BossBullet from "/src/bossBullet.js";
+import PowerCore from "/src/powerCore.js";
 import { playShoot, playExplosion, playCollect, playGameOver, playBossExplosion, playLevelUp, playVictory, startEngine, stopEngine } from "/src/sounds.js";
 
 // ─── Canvas Setup ────────────────────────────────────────────────────────────
@@ -89,11 +91,13 @@ healthImg.src = 'https://i.ibb.co/PhqgB2G/health.png';
 // ─── Game State ───────────────────────────────────────────────────────────────
 let health = 300;
 let score = 0;
-let bullets = [], sLBullets = [], sRBullets = [];
+let bullets = [], sLBullets = [], sRBullets = [], bossBullets = [];
 let enemies = [], mEnemies = [];
-let healthPacks = [], shieldPacks = [], explosions = [], stars = [];
+let healthPacks = [], shieldPacks = [], powerCores = [], explosions = [], stars = [];
 let shooterPower = 1.0;
 let enemiesKilled = 0;
+let levelKills = 0;
+let damageBoostBase = 1.0;
 
 let galacticBackground = new Background(GameWidth, GameHeight);
 let died = false;
@@ -102,16 +106,30 @@ let gameTime = 0;
 let highScore = parseInt(localStorage.getItem("spaceShooterHighScore") || "0", 10);
 let shieldActive = false;
 let shieldEndTime = 0;
-const SHIELD_DURATION_MS = 12000;
+let shieldDurationMs = 12000;
+let powerBoostActive = false;
+let powerBoostEndTime = 0;
+let powerBoostMult = 1.35;
+let fireBoostMult = 0.8;
+let powerBoostDurationMs = 10000;
 let shootIntervalId = null;
-const SHOOT_INTERVAL_MS = 200;
+let baseShootIntervalMs = 200;
 let level = 1;
-let scoreForNextLevel = 1000;
+let scoreForNextLevel = 1400;
+let levelStartScore = 0;
 let zoneBannerUntil = 0;
 const FINAL_LEVEL = LEVEL_THEMES.length;
 let finalBossSpawned = false;
 let gameWon = false;
 let paused = false;
+let upgradeOptions = [];
+let upgradeChoiceRects = [];
+let objective = null;
+let objectiveBannerUntil = 0;
+let objectiveCompleteUntil = 0;
+let shakeUntil = 0;
+let shakeMagnitude = 0;
+let hitFlashAlpha = 0;
 
 // ─── Paddle & Input ───────────────────────────────────────────────────────────
 let paddle = new Paddle(GameWidth, GameHeight, playerImg);
@@ -181,11 +199,18 @@ function togglePause() {
 // ─── Screen-transition listeners ─────────────────────────────────────────────
 function handleStartTransition(e) {
   if (e && e.target && e.target.id === "pauseBtn") return;
-  if (gameState === "start")    { gameState = "playing"; startEngine(); createPauseButton(); return; }
-  if (gameState === "gameover") { restartGame(); gameState = "playing"; startEngine(); createPauseButton(); return; }
-  if (gameState === "won")      { restartGame(); gameState = "playing"; startEngine(); createPauseButton(); return; }
+  if (gameState === "upgrade") return;
+  if (gameState === "start")    { gameState = "playing"; startEngine(); createPauseButton(); startLevel(performance.now()); return; }
+  if (gameState === "gameover") { restartGame(); gameState = "playing"; startEngine(); createPauseButton(); startLevel(performance.now()); return; }
+  if (gameState === "won")      { restartGame(); gameState = "playing"; startEngine(); createPauseButton(); startLevel(performance.now()); return; }
 }
 document.addEventListener("keydown", (e) => {
+  if (gameState === "upgrade") {
+    if (e.key === "1" || e.key === "2" || e.key === "3") {
+      handleUpgradeChoice(parseInt(e.key, 10) - 1, performance.now());
+    }
+    return;
+  }
   if (e.key === "Escape" || e.key === "p" || e.key === "P") {
     if (gameState === "playing" || gameState === "paused") { togglePause(); return; }
   }
@@ -193,6 +218,24 @@ document.addEventListener("keydown", (e) => {
 });
 document.addEventListener("click",      handleStartTransition);
 document.addEventListener("touchstart", handleStartTransition, { passive: true });
+
+GameScreen.addEventListener("click", (e) => {
+  if (gameState !== "upgrade") return;
+  const rect = GameScreen.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  const hit = upgradeChoiceRects.find(r => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h);
+  if (hit) handleUpgradeChoice(upgradeOptions.findIndex(o => o.id === hit.id), performance.now());
+});
+GameScreen.addEventListener("touchstart", (e) => {
+  if (gameState !== "upgrade") return;
+  const t = e.touches[0];
+  const rect = GameScreen.getBoundingClientRect();
+  const x = t.clientX - rect.left;
+  const y = t.clientY - rect.top;
+  const hit = upgradeChoiceRects.find(r => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h);
+  if (hit) handleUpgradeChoice(upgradeOptions.findIndex(o => o.id === hit.id), performance.now());
+}, { passive: true });
 
 // ─── Initial star field ───────────────────────────────────────────────────────
 for (let i = 0; i < GameWidth; i += 40)
@@ -222,28 +265,103 @@ function roundedRect(ctx, x, y, w, h, r) {
 function updateShooterPower() {
   shooterPower = Math.min(3.0, 1.0 + (level - 1) * 0.15 + enemiesKilled * 0.02);
 }
+function getDamageMultiplier() {
+  return shooterPower * damageBoostBase * (powerBoostActive ? powerBoostMult : 1);
+}
+function triggerHitFeedback(strength, timestamp) {
+  shakeUntil = Math.max(shakeUntil, timestamp + 140);
+  shakeMagnitude = Math.max(shakeMagnitude, strength);
+  hitFlashAlpha = Math.min(0.35, hitFlashAlpha + 0.22);
+}
+
+function buildObjective(timestamp) {
+  const isSurvive = level % 2 === 0;
+  if (isSurvive) {
+    const duration = Math.min(26000, 16000 + level * 800);
+    return {
+      type: "survive",
+      text: "Survive " + Math.round(duration / 1000) + "s",
+      target: duration,
+      progress: 0,
+      startTime: timestamp,
+      endTime: timestamp + duration,
+      completed: false,
+    };
+  }
+  const target = 10 + Math.floor(level * 1.5);
+  const duration = Math.min(26000, 20000 + level * 500);
+  return {
+    type: "kills",
+    text: "Destroy " + target + " ships",
+    target,
+    progress: 0,
+    startTime: timestamp,
+    endTime: timestamp + duration,
+    completed: false,
+  };
+}
+
+function completeObjective(timestamp) {
+  if (!objective || objective.completed) return;
+  objective.completed = true;
+  objective.progress = objective.target;
+  objective.endTime = timestamp;
+  objectiveCompleteUntil = timestamp + 1800;
+  score += 250;
+  spawnPowerCore();
+}
+
+function updateObjectiveProgress(timestamp) {
+  if (!objective || objective.completed) return;
+  if (objective.type === "survive") {
+    objective.progress = Math.min(objective.target, timestamp - objective.startTime);
+    if (timestamp >= objective.endTime) completeObjective(timestamp);
+  } else if (objective.type === "kills") {
+    if (timestamp >= objective.endTime) objective = null;
+  }
+}
+
+function recordKill(delta, timestamp) {
+  levelKills += delta;
+  if (objective && !objective.completed && objective.type === "kills") {
+    objective.progress = Math.min(objective.target, objective.progress + delta);
+    if (objective.progress >= objective.target) completeObjective(timestamp);
+  }
+}
+
+function startLevel(timestamp) {
+  levelStartScore = score;
+  levelKills = 0;
+  objective = buildObjective(timestamp);
+  objectiveBannerUntil = timestamp + 2200;
+  objectiveCompleteUntil = 0;
+  zoneBannerUntil = timestamp + 2800;
+}
 
 // ─── Spawn helpers ────────────────────────────────────────────────────────────
 let lastEnemySpawn  = 0;
 let lastBossSpawn   = 0;
 let lastHealthSpawn = 0;
 let lastShieldSpawn = 0;
+let lastPowerSpawn  = 0;
 let lastStarSpawn   = 0;
 
 // FIX: Dynamic spawn interval — slower at low levels, scales up gradually
 function getSpawnInterval() {
-  return Math.max(350, 900 - (level - 1) * 40);
+  const base = 980 - (level - 1) * 34;
+  const jitter = Math.random() * 90;
+  return Math.max(420, base + jitter);
 }
 
 function spawnEnemy() {
   if (gameState !== "playing") return;
   // FIX: Hard cap on screen enemies to keep game playable
-  const maxOnScreen = Math.min(6 + level * 2, 22);
+  const maxOnScreen = Math.min(6 + level * 1.5, 18);
   if (enemies.length >= maxOnScreen) return;
   if (level <= 2 && Math.random() > 0.55) return;
 
-  // FIX: Always spawn 1, occasionally 2 — never the old "spawn level count"
-  const count = (level >= 4 && Math.random() < 0.35) ? 2 : 1;
+  // FIX: Always spawn 1, occasionally 2 when the screen is calm
+  const count = (level >= 6 && enemies.length < maxOnScreen - 2 && Math.random() < 0.25) ? 2 : 1;
 
   for (let i = 0; i < count; i++) {
     if (enemies.length >= maxOnScreen) break;
@@ -286,6 +404,7 @@ function spawnMEnemy() {
 
 function spawnHealth() { if (gameState === "playing") healthPacks.push(new HealthPack(GameWidth, healthImg)); }
 function spawnShield() { if (gameState === "playing") shieldPacks.push(new ShieldPack(GameWidth)); }
+function spawnPowerCore() { if (gameState === "playing") powerCores.push(new PowerCore(GameWidth)); }
 
 // ─── Shooting ─────────────────────────────────────────────────────────────────
 function fire() {
@@ -296,11 +415,14 @@ function fire() {
   sLBullets.push(new SLBullet(bullet, bulletImg));
   sRBullets.push(new SRBullet(bullet, bulletImg));
 }
+function getShootIntervalMs() {
+  return Math.max(110, baseShootIntervalMs * (powerBoostActive ? fireBoostMult : 1));
+}
 function startHoldShoot() {
   if (gameState !== "playing") return;
   fire();
   if (!shootIntervalId)
-    shootIntervalId = setInterval(() => { if (gameState === "playing") fire(); }, SHOOT_INTERVAL_MS);
+    shootIntervalId = setInterval(() => { if (gameState === "playing") fire(); }, getShootIntervalMs());
 }
 function stopHoldShoot() {
   if (shootIntervalId) { clearInterval(shootIntervalId); shootIntervalId = null; }
@@ -353,7 +475,7 @@ function drawHUD(timestamp, theme) {
   ctx.fillText(Math.max(0, Math.ceil(health)) + " / " + maxHealth, barX, barY + barH + 14);
 
   if (hasShield) {
-    const left = (shieldEndTime - timestamp) / SHIELD_DURATION_MS;
+    const left = (shieldEndTime - timestamp) / shieldDurationMs;
     const sY = barY + barH + 22;
     ctx.fillStyle = accent + "66";
     ctx.font = "600 8px Orbitron, sans-serif";
@@ -379,6 +501,15 @@ function drawHUD(timestamp, theme) {
   ctx.fillText("SCORE  " + scoreStr, sCX, GameHeight - 25);
   ctx.shadowBlur = 0;
   ctx.textAlign = "left";
+
+  // ── Level progress bar ─────────────────────────────────────────────────
+  const goalSpan = Math.max(1, scoreForNextLevel - levelStartScore);
+  const prog = Math.max(0, Math.min(1, (score - levelStartScore) / goalSpan));
+  const pW = 180, pH = 6;
+  roundedRect(ctx, sCX - pW / 2, GameHeight - 58, pW, pH, 3);
+  ctx.fillStyle = "rgba(255,255,255,0.09)"; ctx.fill();
+  roundedRect(ctx, sCX - pW / 2 + 1, GameHeight - 57, (pW - 2) * prog, pH - 2, 2);
+  ctx.fillStyle = accent + "aa"; ctx.fill();
 
   // ── Top right info panel ──────────────────────────────────────────────────
   const infoX = GameWidth - 168;
@@ -406,6 +537,14 @@ function drawHUD(timestamp, theme) {
   ctx.fillStyle = "rgba(160,160,210,0.55)";
   ctx.font = "600 9px Orbitron, sans-serif";
   ctx.fillText("PWR " + shooterPower.toFixed(1) + "×", infoX + 110, pad + 53);
+
+  if (powerBoostActive) {
+    const left = Math.max(0, (powerBoostEndTime - timestamp) / powerBoostDurationMs);
+    roundedRect(ctx, infoX + 12, pad + 56, 120, 5, 2);
+    ctx.fillStyle = "rgba(255,255,255,0.08)"; ctx.fill();
+    roundedRect(ctx, infoX + 13, pad + 57, 118 * left, 3, 2);
+    ctx.fillStyle = "#ffd24d"; ctx.fill();
+  }
 
   ctx.restore();
 }
@@ -440,6 +579,37 @@ function drawZoneBanner(timestamp, theme) {
   ctx.restore();
 }
 
+// ─── Objective HUD ───────────────────────────────────────────────────────────
+function drawObjective(timestamp, theme) {
+  if (!objective) return;
+  const active = timestamp < objective.endTime;
+  const completed = objective.completed;
+  const showComplete = timestamp < objectiveCompleteUntil;
+  if (!active && !showComplete) return;
+
+  ctx.save();
+  const cx = GameWidth / 2;
+  const y = 22;
+  const label = completed ? "OBJECTIVE COMPLETE" : (timestamp < objectiveBannerUntil ? "NEW OBJECTIVE" : "OBJECTIVE");
+  const value = completed ? "+250 SCORE + POWER CORE" : objective.text;
+
+  ctx.textAlign = "center";
+  ctx.fillStyle = completed ? "#ffd24d" : theme.accent;
+  ctx.font = "700 10px Orbitron, sans-serif";
+  ctx.fillText(label, cx, y);
+  ctx.fillStyle = "rgba(220,220,245,0.8)";
+  ctx.font = "500 12px Rajdhani, sans-serif";
+  ctx.fillText(value, cx, y + 14);
+
+  const w = 180, h = 4;
+  roundedRect(ctx, cx - w / 2, y + 20, w, h, 2);
+  ctx.fillStyle = "rgba(255,255,255,0.08)"; ctx.fill();
+  const prog = completed ? 1 : Math.max(0, Math.min(1, objective.progress / objective.target));
+  roundedRect(ctx, cx - w / 2 + 1, y + 21, (w - 2) * prog, h - 2, 2);
+  ctx.fillStyle = theme.accent + "aa"; ctx.fill();
+  ctx.restore();
+}
+
 // ─── Boss HP bars ─────────────────────────────────────────────────────────────
 function drawBossHPBars() {
   for (const boss of mEnemies) {
@@ -464,6 +634,102 @@ function drawBossHPBars() {
       ctx.shadowBlur = 0; ctx.textAlign = "left";
     }
   }
+}
+
+function drawBossTelegraph(boss, timestamp, theme) {
+  if (!boss.telegraphUntil || timestamp > boss.telegraphUntil) return;
+  const left = Math.max(0, (boss.telegraphUntil - timestamp) / 320);
+  const r = boss.width * (0.6 + 0.2 * (1 - left));
+  ctx.save();
+  ctx.strokeStyle = boss.isFinal ? "rgba(255,80,100,0.85)" : theme.accent + "cc";
+  ctx.lineWidth = 2 + 2 * (1 - left);
+  ctx.shadowColor = ctx.strokeStyle;
+  ctx.shadowBlur = 18;
+  ctx.beginPath();
+  ctx.arc(boss.position.x + boss.width / 2, boss.position.y + boss.height / 2, r, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ─── Boss shooting ───────────────────────────────────────────────────────────
+function bossFire(boss, target, timestamp) {
+  if (!boss.nextShotAt) boss.nextShotAt = 0;
+  if (!boss.pendingShots) boss.pendingShots = 0;
+  const cadence = boss.isFinal ? 820 : 1300;
+  if (timestamp >= boss.nextShotAt && boss.pendingShots === 0) {
+    boss.telegraphUntil = timestamp + 320;
+    boss.pendingShots = boss.isFinal && Math.random() < 0.5 ? 2 : 1;
+    boss.nextShotAt = timestamp + cadence;
+  }
+  if (boss.pendingShots > 0 && timestamp >= boss.telegraphUntil) {
+    const spread = boss.isFinal ? 60 : 35;
+    for (let i = 0; i < boss.pendingShots; i++) {
+      const offset = boss.pendingShots > 1 ? (i === 0 ? -spread : spread) : 0;
+      const fakeTarget = {
+        position: { x: target.position.x + offset, y: target.position.y },
+        width: target.width,
+        height: target.height,
+      };
+      bossBullets.push(new BossBullet(boss, fakeTarget));
+    }
+    boss.pendingShots = 0;
+  }
+}
+
+// ─── Upgrade Screen ──────────────────────────────────────────────────────────
+function drawUpgradeScreen() {
+  ctx.save();
+  ctx.fillStyle = "rgba(4,3,18,0.7)";
+  ctx.fillRect(0, 0, GameWidth, GameHeight);
+
+  const cx = GameWidth / 2, cy = GameHeight / 2;
+  const pW = Math.min(720, GameWidth - 48), pH = 320;
+  roundedRect(ctx, cx - pW / 2, cy - pH / 2, pW, pH, 24);
+  ctx.fillStyle = "rgba(8,6,26,0.94)"; ctx.fill();
+  ctx.strokeStyle = "rgba(0,212,255,0.2)"; ctx.lineWidth = 1.5; ctx.stroke();
+
+  ctx.textAlign = "center";
+  ctx.shadowColor = "#00d4ff"; ctx.shadowBlur = 20;
+  ctx.fillStyle = "#00d4ff";
+  ctx.font = "900 28px Orbitron, sans-serif";
+  ctx.fillText("CHOOSE AN UPGRADE", cx, cy - 112);
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = "rgba(200,200,235,0.7)";
+  ctx.font = "600 12px Rajdhani, sans-serif";
+  ctx.fillText("LEVEL " + level + " REACHED", cx, cy - 88);
+
+  upgradeChoiceRects = [];
+  const cardW = Math.min(210, (pW - 80) / 3);
+  const cardH = 170;
+  const startX = cx - (cardW * 1.5) - 20;
+  const y = cy - 42;
+  upgradeOptions.forEach((opt, i) => {
+    const x = startX + i * (cardW + 20);
+    roundedRect(ctx, x, y, cardW, cardH, 16);
+    ctx.fillStyle = "rgba(12,10,32,0.9)"; ctx.fill();
+    ctx.strokeStyle = opt.color; ctx.lineWidth = 1.5; ctx.stroke();
+
+    ctx.fillStyle = opt.color;
+    ctx.font = "800 12px Orbitron, sans-serif";
+    ctx.fillText("[" + (i + 1) + "]", x + cardW / 2, y + 24);
+
+    ctx.fillStyle = "#fff";
+    ctx.font = "700 15px Rajdhani, sans-serif";
+    ctx.fillText(opt.title, x + cardW / 2, y + 58);
+
+    ctx.fillStyle = "rgba(200,200,235,0.75)";
+    ctx.font = "500 12px Rajdhani, sans-serif";
+    ctx.fillText(opt.desc, x + cardW / 2, y + 84);
+
+    ctx.fillStyle = "rgba(255,255,255,0.6)";
+    ctx.font = "500 11px Rajdhani, sans-serif";
+    ctx.fillText("Press " + (i + 1) + " or tap", x + cardW / 2, y + 138);
+    upgradeChoiceRects.push({ x, y, w: cardW, h: cardH, id: opt.id });
+  });
+
+  ctx.textAlign = "left";
+  ctx.restore();
 }
 
 // ─── Pause Overlay ────────────────────────────────────────────────────────────
@@ -492,9 +758,20 @@ function drawPauseScreen() {
   ctx.strokeStyle = "rgba(255,255,255,0.07)"; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(cx - 140, cy + 40); ctx.lineTo(cx + 140, cy + 40); ctx.stroke();
 
-  ctx.fillStyle = "rgba(255,200,55,0.65)";
-  ctx.font = "600 11px Orbitron, sans-serif";
-  ctx.fillText("SCORE: " + score.toLocaleString() + "   |   LVL: " + level, cx, cy + 62);
+  ctx.fillStyle = "rgba(255,200,55,0.75)";
+  ctx.font = "700 12px Orbitron, sans-serif";
+  ctx.fillText("SCORE  " + score.toLocaleString(), cx, cy + 60);
+
+  ctx.fillStyle = "rgba(200,200,235,0.7)";
+  ctx.font = "600 11px Rajdhani, sans-serif";
+  ctx.fillText("LEVEL  " + level + "   |   HULL  " + Math.max(0, Math.ceil(health)) + " / 400", cx, cy + 80);
+
+  if (objective && !objective.completed) {
+    const oProg = Math.round((objective.progress / objective.target) * 100);
+    ctx.fillStyle = "rgba(120,210,255,0.7)";
+    ctx.font = "600 11px Rajdhani, sans-serif";
+    ctx.fillText("OBJECTIVE  " + objective.text + "  (" + Math.min(100, Math.max(0, oProg)) + "%)", cx, cy + 100);
+  }
 
   ctx.textAlign = "left";
   ctx.restore();
@@ -560,6 +837,7 @@ function drawStartScreen() {
     ["🔫", "Hold mouse or touch to auto-fire"],
     ["❤",  "Collect health packs to restore hull"],
     ["🛡",  "Collect shield packs for protection"],
+    ["⚡",  "Power cores boost fire rate + damage"],
     ["🌌",  "15 unique sectors — Final boss awaits"],
   ];
   lines.forEach(([icon, text], i) => {
@@ -667,6 +945,48 @@ function drawWinScreen() {
   ctx.textAlign = "left";
 }
 
+// ─── Upgrade Logic ───────────────────────────────────────────────────────────
+function buildUpgradeOptions() {
+  const pool = [
+    { id: "rapid",   title: "Rapid Fire",  desc: "Fire rate +15%", color: "#00d4ff" },
+    { id: "damage",  title: "Heavy Rounds", desc: "Damage +15%",   color: "#ffcc44" },
+    { id: "shield",  title: "Shield Matrix", desc: "Shield +20%",  color: "#44ffcc" },
+    { id: "reactor", title: "Reactor Core", desc: "Power core +25%", color: "#ff8877" },
+  ];
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  upgradeOptions = pool.slice(0, 3);
+}
+
+function applyUpgrade(id, timestamp) {
+  if (id === "rapid") {
+    baseShootIntervalMs = Math.max(120, baseShootIntervalMs * 0.85);
+  } else if (id === "damage") {
+    damageBoostBase += 0.15;
+  } else if (id === "shield") {
+    shieldDurationMs = Math.min(20000, shieldDurationMs * 1.2);
+  } else if (id === "reactor") {
+    powerBoostDurationMs = Math.min(15000, powerBoostDurationMs * 1.25);
+  }
+
+  if (shootIntervalId) {
+    clearInterval(shootIntervalId);
+    shootIntervalId = setInterval(() => { if (gameState === "playing") fire(); }, getShootIntervalMs());
+  }
+
+  gameState = "playing";
+  startLevel(timestamp);
+}
+
+function handleUpgradeChoice(index, timestamp) {
+  if (gameState !== "upgrade") return;
+  const opt = upgradeOptions[index];
+  if (!opt) return;
+  applyUpgrade(opt.id, timestamp);
+}
+
 // ─── Main game loop ───────────────────────────────────────────────────────────
 let lastTime = null;
 
@@ -683,6 +1003,26 @@ function gameLoop(timestamp) {
   if (gameState === "start")    { drawStartScreen();    requestAnimationFrame(gameLoop); return; }
   if (gameState === "gameover") { drawGameOverScreen(); requestAnimationFrame(gameLoop); return; }
   if (gameState === "won")      { drawWinScreen();      requestAnimationFrame(gameLoop); return; }
+  if (gameState === "upgrade") {
+    const theme = getTheme(level);
+    ctx.fillStyle = `hsla(${theme.bgHue}, 70%, 30%, 0.07)`;
+    ctx.fillRect(0, 0, GameWidth, GameHeight);
+    stars.forEach(s => s.draw(ctx));
+    enemies.forEach(e => e.draw(ctx));
+    mEnemies.forEach(e => e.draw(ctx));
+    healthPacks.forEach(h => h.draw(ctx));
+    shieldPacks.forEach(s => s.draw(ctx));
+    powerCores.forEach(p => p.draw(ctx));
+    [bullets, sLBullets, sRBullets].forEach(arr => arr.forEach(b => b.draw(ctx)));
+    bossBullets.forEach(b => b.draw(ctx));
+    explosions.forEach(ex => ex.draw(ctx));
+    paddle.draw(ctx);
+    drawHUD(performance.now(), theme);
+    drawBossHPBars();
+    drawUpgradeScreen();
+    requestAnimationFrame(gameLoop);
+    return;
+  }
 
   if (gameState === "paused") {
     // Draw frozen world + overlay
@@ -694,7 +1034,9 @@ function gameLoop(timestamp) {
     mEnemies.forEach(e => e.draw(ctx));
     healthPacks.forEach(h => h.draw(ctx));
     shieldPacks.forEach(s => s.draw(ctx));
+    powerCores.forEach(p => p.draw(ctx));
     [bullets, sLBullets, sRBullets].forEach(arr => arr.forEach(b => b.draw(ctx)));
+    bossBullets.forEach(b => b.draw(ctx));
     explosions.forEach(ex => ex.draw(ctx));
     paddle.draw(ctx);
     drawHUD(performance.now(), theme);
@@ -711,6 +1053,15 @@ function gameLoop(timestamp) {
   ctx.fillStyle = `hsla(${theme.bgHue}, 70%, 30%, 0.07)`;
   ctx.fillRect(0, 0, GameWidth, GameHeight);
 
+  const shakeActive = timestamp < shakeUntil;
+  const shakeX = shakeActive ? (Math.random() * 2 - 1) * shakeMagnitude : 0;
+  const shakeY = shakeActive ? (Math.random() * 2 - 1) * shakeMagnitude : 0;
+  if (!shakeActive) shakeMagnitude = Math.max(0, shakeMagnitude - deltaTime * 0.04);
+  hitFlashAlpha = Math.max(0, hitFlashAlpha - deltaTime * 0.0025);
+
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
   for (let i = stars.length - 1; i >= 0; i--) {
     stars[i].draw(ctx); stars[i].update(deltaTime);
     if (stars[i].position.y > GameHeight) stars.splice(i, 1);
@@ -725,8 +1076,11 @@ function gameLoop(timestamp) {
   if (timestamp - lastBossSpawn   > 6000)           { spawnMEnemy(); lastBossSpawn   = timestamp; }
   if (timestamp - lastHealthSpawn > 7000)            { spawnHealth(); lastHealthSpawn = timestamp; }
   if (timestamp - lastShieldSpawn > 16000)           { spawnShield(); lastShieldSpawn = timestamp; }
+  if (timestamp - lastPowerSpawn  > 18000)           { spawnPowerCore(); lastPowerSpawn = timestamp; }
 
   if (shieldActive && timestamp >= shieldEndTime) shieldActive = false;
+  if (powerBoostActive && timestamp >= powerBoostEndTime) powerBoostActive = false;
+  updateObjectiveProgress(timestamp);
 
   for (let i = enemies.length - 1; i >= 0; i--) {
     if (i >= enemies.length) continue;
@@ -734,10 +1088,12 @@ function gameLoop(timestamp) {
     if (collision(paddle, enemies[i])) {
       explosions.push(new Explosion(enemies[i].position.x + enemies[i].width / 2, enemies[i].position.y + enemies[i].height / 2, 1.2, theme.bgHue));
       if (!shieldActive) health -= enemies[i].health === enemies[i].maxHealth ? 20 : 8;
+      triggerHitFeedback(6, timestamp);
       playExplosion(); enemies.splice(i, 1); continue;
     }
     if (enemies[i].position.y > GameHeight) {
       if (!shieldActive) health -= enemies[i].health === enemies[i].maxHealth ? 8 : 2;
+      triggerHitFeedback(4, timestamp);
       enemies.splice(i, 1); continue;
     }
     let killed = false;
@@ -746,11 +1102,11 @@ function gameLoop(timestamp) {
       for (let x = arr.length - 1; x >= 0; x--) {
         if (i >= enemies.length) break;
         if (collision(enemies[i], arr[x])) {
-          enemies[i].health -= mult * shooterPower; arr.splice(x, 1);
+          enemies[i].health -= mult * getDamageMultiplier(); arr.splice(x, 1);
           if (enemies[i].health <= 0) {
             explosions.push(new Explosion(enemies[i].position.x + enemies[i].width / 2, enemies[i].position.y + enemies[i].height / 2, 0.8, theme.bgHue));
             score += enemies[i].maxHealth >= 3 ? 25 : 10;
-            enemiesKilled++; updateShooterPower(); playExplosion();
+            enemiesKilled++; recordKill(1, timestamp); updateShooterPower(); playExplosion();
             enemies.splice(i, 1); killed = true;
           }
           break;
@@ -761,14 +1117,17 @@ function gameLoop(timestamp) {
 
   for (let i = mEnemies.length - 1; i >= 0; i--) {
     if (i >= mEnemies.length) continue;
-    mEnemies[i].draw(ctx); mEnemies[i].update(deltaTime);
+    mEnemies[i].draw(ctx); drawBossTelegraph(mEnemies[i], timestamp, theme); mEnemies[i].update(deltaTime);
+    bossFire(mEnemies[i], paddle, timestamp);
     if (collision(paddle, mEnemies[i])) {
       explosions.push(new Explosion(mEnemies[i].position.x + mEnemies[i].width / 2, mEnemies[i].position.y + mEnemies[i].height / 2, 2, theme.bgHue));
       if (!shieldActive) health -= mEnemies[i].health === mEnemies[i].maxHealth ? 60 : 25;
+      triggerHitFeedback(10, timestamp);
       playBossExplosion(); mEnemies.splice(i, 1); continue;
     }
     if (mEnemies[i].position.y > GameHeight) {
       if (!shieldActive) health -= 50;
+      triggerHitFeedback(8, timestamp);
       mEnemies.splice(i, 1); continue;
     }
     for (const [arr, mult] of [[sLBullets, 0.25], [sRBullets, 0.25], [bullets, 1.0]]) {
@@ -776,12 +1135,12 @@ function gameLoop(timestamp) {
       for (let x = arr.length - 1; x >= 0; x--) {
         if (i >= mEnemies.length) break;
         if (collision(mEnemies[i], arr[x])) {
-          mEnemies[i].health -= mult * shooterPower; arr.splice(x, 1);
+          mEnemies[i].health -= mult * getDamageMultiplier(); arr.splice(x, 1);
           if (mEnemies[i].health <= 0) {
             explosions.push(new Explosion(mEnemies[i].position.x + mEnemies[i].width / 2, mEnemies[i].position.y + mEnemies[i].height / 2, 2.5, theme.bgHue));
             score += 100;
             const wasFinal = mEnemies[i].isFinal;
-            playBossExplosion(); mEnemies.splice(i, 1); enemiesKilled++; updateShooterPower();
+            playBossExplosion(); mEnemies.splice(i, 1); enemiesKilled++; recordKill(3, timestamp); updateShooterPower();
             if (wasFinal) {
               if (score > highScore) { highScore = score; localStorage.setItem("spaceShooterHighScore", String(highScore)); }
               gameState = "won"; gameWon = true; playVictory(); removePauseButton();
@@ -811,22 +1170,51 @@ function gameLoop(timestamp) {
   for (let i = shieldPacks.length - 1; i >= 0; i--) {
     if (i >= shieldPacks.length) continue;
     shieldPacks[i].draw(ctx); shieldPacks[i].update(deltaTime);
-    if (collision(paddle, shieldPacks[i])) { shieldActive = true; shieldEndTime = timestamp + SHIELD_DURATION_MS; playCollect(); shieldPacks.splice(i, 1); continue; }
+    if (collision(paddle, shieldPacks[i])) { shieldActive = true; shieldEndTime = timestamp + shieldDurationMs; playCollect(); shieldPacks.splice(i, 1); continue; }
     if (shieldPacks[i].position.y > GameHeight) { shieldPacks.splice(i, 1); continue; }
     let eaten = false;
     for (const arr of [sLBullets, sRBullets, bullets]) {
       if (eaten || i >= shieldPacks.length) break;
       for (let x = arr.length - 1; x >= 0; x--) {
         if (i >= shieldPacks.length) break;
-        if (collision(shieldPacks[i], arr[x])) { shieldActive = true; shieldEndTime = timestamp + SHIELD_DURATION_MS; playCollect(); arr.splice(x, 1); shieldPacks.splice(i, 1); eaten = true; break; }
+        if (collision(shieldPacks[i], arr[x])) { shieldActive = true; shieldEndTime = timestamp + shieldDurationMs; playCollect(); arr.splice(x, 1); shieldPacks.splice(i, 1); eaten = true; break; }
       }
     }
+  }
+
+  for (let i = powerCores.length - 1; i >= 0; i--) {
+    if (i >= powerCores.length) continue;
+    powerCores[i].draw(ctx); powerCores[i].update(deltaTime);
+    if (collision(paddle, powerCores[i])) {
+      powerBoostActive = true;
+      powerBoostEndTime = timestamp + powerBoostDurationMs;
+      playCollect();
+      if (shootIntervalId) {
+        clearInterval(shootIntervalId);
+        shootIntervalId = setInterval(() => { if (gameState === "playing") fire(); }, getShootIntervalMs());
+      }
+      powerCores.splice(i, 1); continue;
+    }
+    if (powerCores[i].position.y > GameHeight) { powerCores.splice(i, 1); continue; }
   }
 
   for (const arr of [bullets, sLBullets, sRBullets]) {
     for (let i = arr.length - 1; i >= 0; i--) {
       arr[i].draw(ctx); arr[i].update(deltaTime);
       if (arr[i].position.y < 0) arr.splice(i, 1);
+    }
+  }
+
+  for (let i = bossBullets.length - 1; i >= 0; i--) {
+    bossBullets[i].draw(ctx); bossBullets[i].update(deltaTime);
+    if (collision(paddle, bossBullets[i])) {
+      if (!shieldActive) health -= 12;
+      triggerHitFeedback(7, timestamp);
+      bossBullets.splice(i, 1);
+      continue;
+    }
+    if (bossBullets[i].position.y > GameHeight + 40 || bossBullets[i].position.x < -40 || bossBullets[i].position.x > GameWidth + 40) {
+      bossBullets.splice(i, 1);
     }
   }
 
@@ -849,15 +1237,27 @@ function gameLoop(timestamp) {
     if (explosions[e].finished) explosions.splice(e, 1);
   }
 
+  ctx.restore();
+
+  if (hitFlashAlpha > 0) {
+    ctx.save();
+    ctx.fillStyle = `rgba(255,80,100,${hitFlashAlpha})`;
+    ctx.fillRect(0, 0, GameWidth, GameHeight);
+    ctx.restore();
+  }
+
   drawHUD(timestamp, theme);
   drawBossHPBars();
+  drawObjective(timestamp, theme);
 
   if (score >= scoreForNextLevel) {
     if (level < FINAL_LEVEL) {
       level++; paddle.setLevel(level);
       playLevelUp(); updateShooterPower();
-      scoreForNextLevel += 1000;
-      zoneBannerUntil = timestamp + 2800;
+      scoreForNextLevel += 1100;
+      buildUpgradeOptions();
+      stopHoldShoot();
+      gameState = "upgrade";
     } else {
       scoreForNextLevel += 999999;
       playLevelUp();
@@ -878,8 +1278,8 @@ function gameLoop(timestamp) {
 // ─── Restart ──────────────────────────────────────────────────────────────────
 function restartGame() {
   health = 300; score = 0;
-  bullets = []; sLBullets = []; sRBullets = [];
-  enemies = []; mEnemies = []; healthPacks = []; shieldPacks = []; explosions = [];
+  bullets = []; sLBullets = []; sRBullets = []; bossBullets = [];
+  enemies = []; mEnemies = []; healthPacks = []; shieldPacks = []; powerCores = []; explosions = [];
   stars = [];
   for (let i = 0; i < GameWidth; i += 40)
     for (let x = 0; x < GameHeight; x += 40)
@@ -888,11 +1288,19 @@ function restartGame() {
   paddle.position.x = GameWidth / 2 - paddle.width / 2;
   paddle.position.y = GameHeight - paddle.height - 10;
   gameTime = 0; shieldActive = false; shieldEndTime = 0;
-  level = 1; scoreForNextLevel = 1000; zoneBannerUntil = 0;
+  powerBoostActive = false; powerBoostEndTime = 0;
+  level = 1; scoreForNextLevel = 1400; levelStartScore = 0; zoneBannerUntil = 0;
   shooterPower = 1.0; enemiesKilled = 0;
+  levelKills = 0;
+  damageBoostBase = 1.0;
+  baseShootIntervalMs = 200;
+  shieldDurationMs = 12000;
+  powerBoostDurationMs = 10000;
   finalBossSpawned = false; gameWon = false; paused = false;
+  objective = null; objectiveBannerUntil = 0; objectiveCompleteUntil = 0;
+  shakeUntil = 0; shakeMagnitude = 0; hitFlashAlpha = 0;
   lastEnemySpawn = 0; lastBossSpawn = 0;
-  lastHealthSpawn = 0; lastShieldSpawn = 0;
+  lastHealthSpawn = 0; lastShieldSpawn = 0; lastPowerSpawn = 0;
 }
 
 // ─── Kick it off ─────────────────────────────────────────────────────────────
