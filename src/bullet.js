@@ -1,8 +1,10 @@
-export default class Bullet {
-  constructor(paddle, img) {
-    this.width = 30;
+import { drawStylizedBullet } from "/src/bulletVisual.js";
 
-    this.height = 30;
+export default class Bullet {
+  constructor(paddle, img, style = {}) {
+    const scale = Math.max(0.6, style.scale ?? 1);
+    this.width = 30 * scale;
+    this.height = 30 * scale;
 
     this.top = {
       width: 4,
@@ -25,31 +27,12 @@ export default class Bullet {
     };
 
     this.img = img;
+    this.style = { ...style };
 
   }
 
   draw(ctx) {
-    /*ctx.fillStyle = '#00f';
-  
-      ctx.fillRect(this.position.x, this.position.y, this.width, this.height);
-  
-      ctx.fillRect(this.position.x + this.width / 2 - this.top.width / 2, this.position.y - this.top.height, this.top.width, this.top.height);
-  
-      ctx.fillRect(this.position.x + this.width / 2 + this.top.width / 2, this.position.y - this.smallTop.height, this.smallTop.width, this.smallTop.height);
-  
-      ctx.fillRect(this.position.x + this.width / 2 - this.top.width / 2 - this.smallTop.width, this.position.y - this.smallTop.height, this.smallTop.width, this.smallTop.height);
-  
-      ctx.fillStyle = 'black';
-  
-      ctx.fillRect(this.position.x + this.width / 2 - this.top.width / 2, this.position.y + this.height - this.top.height + 2, this.top.width, this.top.height)*/
-
-    ctx.drawImage(
-      this.img,
-      this.position.x,
-      this.position.y,
-      this.width,
-      this.height
-    );
+    drawStylizedBullet(ctx, this);
   }
 
   update(deltaTime) {

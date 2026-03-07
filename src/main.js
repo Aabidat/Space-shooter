@@ -16,6 +16,7 @@ import Background from "/src/background.js";
 import Explosion from "/src/explosion.js";
 import BossBullet from "/src/bossBullet.js";
 import PowerCore from "/src/powerCore.js";
+import BulletBooster from "/src/bulletBooster.js";
 import { playShoot, playExplosion, playCollect, playGameOver, playBossExplosion, playLevelUp, playVictory, startEngine, stopEngine } from "/src/sounds.js";
 
 // ─── Canvas Setup ────────────────────────────────────────────────────────────
@@ -57,6 +58,18 @@ const LEVEL_THEMES = [
 function getTheme(lvl) {
   return LEVEL_THEMES[Math.min(lvl - 1, LEVEL_THEMES.length - 1)];
 }
+
+const LEVEL_BULLET_STYLES = [
+  { shape: "bolt", hue: 205, sat: 92, lit: 60, glow: 14, scale: 1 },
+  { shape: "diamond", hue: 175, sat: 90, lit: 58, glow: 16, scale: 1 },
+  { shape: "lance", hue: 150, sat: 95, lit: 65, glow: 18, scale: 1 },
+  { shape: "orb", hue: 110, sat: 92, lit: 64, glow: 20, scale: 1 },
+  { shape: "shard", hue: 320, sat: 94, lit: 58, glow: 16, scale: 1 },
+  { shape: "bolt", hue: 40, sat: 95, lit: 68, glow: 15, scale: 1 },
+  { shape: "lance", hue: 260, sat: 90, lit: 60, glow: 18, scale: 1 },
+  { shape: "diamond", hue: 30, sat: 94, lit: 62, glow: 18, scale: 1.05 },
+];
+const BULLET_BOOSTER_SPAWN_INTERVAL_MS = 17000;
 
 // ─── Images ──────────────────────────────────────────────────────────────────
 // FIX: Set onload/onerror BEFORE .src to avoid race conditions & hangs
@@ -113,7 +126,7 @@ let powerBoostMult = 1.35;
 let fireBoostMult = 0.8;
 let powerBoostDurationMs = 10000;
 let shootIntervalId = null;
-let autoShootEnabled = false;
+let autoShootEnabled = true;
 let holdShootActive = false;
 let baseShootIntervalMs = 200;
 let level = 1;
@@ -132,6 +145,11 @@ let objectiveCompleteUntil = 0;
 let shakeUntil = 0;
 let shakeMagnitude = 0;
 let hitFlashAlpha = 0;
+let bulletBoosters = [];
+let activeBulletBooster = null;
+let bulletBoosterEndTime = 0;
+let bulletBoosterLabel = "";
+let lastBulletBoosterSpawn = 0;
 
 // ─── Paddle & Input ───────────────────────────────────────────────────────────
 let paddle = new Paddle(GameWidth, GameHeight, playerImg);
@@ -236,9 +254,9 @@ function togglePause() {
 function handleStartTransition(e) {
   if (e && e.target && (e.target.id === "pauseBtn" || e.target.id === "autoShootBtn")) return;
   if (gameState === "upgrade") return;
-  if (gameState === "start")    { gameState = "playing"; startEngine(); createPauseButton(); createAutoShootButton(); startLevel(performance.now()); return; }
-  if (gameState === "gameover") { restartGame(); gameState = "playing"; startEngine(); createPauseButton(); createAutoShootButton(); startLevel(performance.now()); return; }
-  if (gameState === "won")      { restartGame(); gameState = "playing"; startEngine(); createPauseButton(); createAutoShootButton(); startLevel(performance.now()); return; }
+  if (gameState === "start")    { gameState = "playing"; startEngine(); createPauseButton(); createAutoShootButton(); startLevel(performance.now()); beginAutoFire(); return; }
+  if (gameState === "gameover") { restartGame(); gameState = "playing"; startEngine(); createPauseButton(); createAutoShootButton(); startLevel(performance.now()); beginAutoFire(); return; }
+  if (gameState === "won")      { restartGame(); gameState = "playing"; startEngine(); createPauseButton(); createAutoShootButton(); startLevel(performance.now()); beginAutoFire(); return; }
 }
 document.addEventListener("keydown", (e) => {
   if (gameState === "upgrade") {
@@ -304,6 +322,24 @@ function roundedRect(ctx, x, y, w, h, r) {
   ctx.lineTo(x, y + r);
   ctx.quadraticCurveTo(x, y, x + r, y);
   ctx.closePath();
+}
+function getBulletStyle(now = performance.now()) {
+  const base = LEVEL_BULLET_STYLES[Math.min(level - 1, LEVEL_BULLET_STYLES.length - 1)];
+  if (activeBulletBooster && bulletBoosterEndTime > now) {
+    return { ...base, ...activeBulletBooster.style };
+  }
+  return { ...base };
+}
+function applyBulletBoosterVariant(variant, timestamp) {
+  activeBulletBooster = variant;
+  bulletBoosterEndTime = timestamp + variant.duration;
+  bulletBoosterLabel = variant.title;
+}
+function spawnBulletBooster() {
+  if (gameState === "playing") bulletBoosters.push(new BulletBooster(GameWidth));
+}
+function beginAutoFire() {
+  if (autoShootEnabled) startShootLoop(true);
 }
 function updateShooterPower() {
   shooterPower = Math.min(3.0, 1.0 + (level - 1) * 0.15 + enemiesKilled * 0.02);
@@ -486,10 +522,11 @@ function spawnPowerCore() { if (gameState === "playing") powerCores.push(new Pow
 function fire() {
   if (gameState !== "playing") return;
   playShoot();
-  const bullet = new Bullet(paddle, bulletImg);
+  const style = getBulletStyle();
+  const bullet = new Bullet(paddle, bulletImg, style);
   bullets.push(bullet);
-  sLBullets.push(new SLBullet(bullet, bulletImg));
-  sRBullets.push(new SRBullet(bullet, bulletImg));
+  sLBullets.push(new SLBullet(bullet, bulletImg, style));
+  sRBullets.push(new SRBullet(bullet, bulletImg, style));
 }
 function getShootIntervalMs() {
   return Math.max(110, baseShootIntervalMs * (powerBoostActive ? fireBoostMult : 1));
@@ -628,7 +665,8 @@ function drawHUD(timestamp, theme) {
 
   // ── Top right info panel ──────────────────────────────────────────────────
   const infoX = GameWidth - 168;
-  roundedRect(ctx, infoX, pad, 152, 68, 12);
+  const infoPanelH = 92;
+  roundedRect(ctx, infoX, pad, 152, infoPanelH, 12);
   ctx.fillStyle = "rgba(4,3,18,0.78)"; ctx.fill();
   ctx.strokeStyle = accent + "35"; ctx.lineWidth = 1; ctx.stroke();
 
@@ -655,6 +693,12 @@ function drawHUD(timestamp, theme) {
   ctx.fillStyle = autoShootEnabled ? "#00d4ff" : "rgba(160,160,210,0.6)";
   ctx.font = "700 8px Orbitron, sans-serif";
   ctx.fillText("AUTO " + (autoShootEnabled ? "ON" : "OFF") + " (F)", infoX + 12, pad + 64);
+
+  if (bulletBoosterLabel && bulletBoosterEndTime > timestamp) {
+    ctx.fillStyle = (activeBulletBooster && activeBulletBooster.color) ? activeBulletBooster.color : theme.accent;
+    ctx.font = "600 8px Orbitron, sans-serif";
+    ctx.fillText(bulletBoosterLabel, infoX + 12, pad + 78);
+  }
 
   if (powerBoostActive) {
     const left = Math.max(0, (powerBoostEndTime - timestamp) / powerBoostDurationMs);
@@ -1094,6 +1138,7 @@ function applyUpgrade(id, timestamp) {
 
   gameState = "playing";
   startLevel(timestamp);
+  beginAutoFire();
 }
 
 function handleUpgradeChoice(index, timestamp) {
@@ -1129,6 +1174,7 @@ function gameLoop(timestamp) {
     healthPacks.forEach(h => h.draw(ctx));
     shieldPacks.forEach(s => s.draw(ctx));
     powerCores.forEach(p => p.draw(ctx));
+    bulletBoosters.forEach(b => b.draw(ctx));
     [bullets, sLBullets, sRBullets].forEach(arr => arr.forEach(b => b.draw(ctx)));
     bossBullets.forEach(b => b.draw(ctx));
     explosions.forEach(ex => ex.draw(ctx));
@@ -1151,6 +1197,7 @@ function gameLoop(timestamp) {
     healthPacks.forEach(h => h.draw(ctx));
     shieldPacks.forEach(s => s.draw(ctx));
     powerCores.forEach(p => p.draw(ctx));
+    bulletBoosters.forEach(b => b.draw(ctx));
     [bullets, sLBullets, sRBullets].forEach(arr => arr.forEach(b => b.draw(ctx)));
     bossBullets.forEach(b => b.draw(ctx));
     explosions.forEach(ex => ex.draw(ctx));
@@ -1193,9 +1240,18 @@ function gameLoop(timestamp) {
   if (timestamp - lastHealthSpawn > 7000)            { spawnHealth(); lastHealthSpawn = timestamp; }
   if (timestamp - lastShieldSpawn > 16000)           { spawnShield(); lastShieldSpawn = timestamp; }
   if (timestamp - lastPowerSpawn  > 18000)           { spawnPowerCore(); lastPowerSpawn = timestamp; }
+  if (timestamp - lastBulletBoosterSpawn > BULLET_BOOSTER_SPAWN_INTERVAL_MS) {
+    spawnBulletBooster();
+    lastBulletBoosterSpawn = timestamp;
+  }
 
   if (shieldActive && timestamp >= shieldEndTime) shieldActive = false;
   if (powerBoostActive && timestamp >= powerBoostEndTime) powerBoostActive = false;
+  if (activeBulletBooster && timestamp >= bulletBoosterEndTime) {
+    activeBulletBooster = null;
+    bulletBoosterEndTime = 0;
+    bulletBoosterLabel = "";
+  }
   updateObjectiveProgress(timestamp);
 
   for (let i = enemies.length - 1; i >= 0; i--) {
@@ -1311,6 +1367,20 @@ function gameLoop(timestamp) {
     if (powerCores[i].position.y > GameHeight) { powerCores.splice(i, 1); continue; }
   }
 
+  for (let i = bulletBoosters.length - 1; i >= 0; i--) {
+    if (i >= bulletBoosters.length) continue;
+    const booster = bulletBoosters[i];
+    booster.draw(ctx);
+    booster.update(deltaTime);
+    if (collision(paddle, booster)) {
+      applyBulletBoosterVariant(booster.variant, timestamp);
+      playCollect();
+      lastBulletBoosterSpawn = timestamp;
+      bulletBoosters.splice(i, 1); continue;
+    }
+    if (booster.position.y > GameHeight) { bulletBoosters.splice(i, 1); continue; }
+  }
+
   for (const arr of [bullets, sLBullets, sRBullets]) {
     for (let i = arr.length - 1; i >= 0; i--) {
       arr[i].draw(ctx); arr[i].update(deltaTime);
@@ -1409,9 +1479,14 @@ function restartGame() {
   baseShootIntervalMs = 200;
   shieldDurationMs = 12000;
   powerBoostDurationMs = 10000;
-  autoShootEnabled = false;
+  autoShootEnabled = true;
   holdShootActive = false;
   updateAutoShootButton();
+  bulletBoosters = [];
+  activeBulletBooster = null;
+  bulletBoosterEndTime = 0;
+  bulletBoosterLabel = "";
+  lastBulletBoosterSpawn = 0;
   finalBossSpawned = false; gameWon = false; paused = false;
   objective = null; objectiveBannerUntil = 0; objectiveCompleteUntil = 0;
   shakeUntil = 0; shakeMagnitude = 0; hitFlashAlpha = 0;
