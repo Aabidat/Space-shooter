@@ -1,3 +1,4 @@
+// Falling pickup that activates temporary offensive buffs.
 export default class PowerCore {
   constructor(gameWidth) {
     this.width = 34;
@@ -28,6 +29,7 @@ export default class PowerCore {
 
   update(deltaTime) {
     if (!deltaTime) return;
+    // Moves downward over time.
     this.position.y += this.speed * (deltaTime / 1000);
   }
 }

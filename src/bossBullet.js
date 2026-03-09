@@ -1,3 +1,4 @@
+// Enemy projectile that travels toward the player's current location at fire time.
 export default class BossBullet {
   constructor(boss, target) {
     this.width = 10;
@@ -8,6 +9,7 @@ export default class BossBullet {
       y: boss.position.y + boss.height * 0.7,
     };
 
+    // Build a normalized direction vector from boss center to paddle center.
     const dx = target.position.x + target.width / 2 - (boss.position.x + boss.width / 2);
     const dy = target.position.y + target.height / 2 - (boss.position.y + boss.height / 2);
     const len = Math.max(1, Math.hypot(dx, dy));
@@ -30,6 +32,7 @@ export default class BossBullet {
 
   update(deltaTime) {
     if (!deltaTime) return;
+    // Convert speed to frame-based movement.
     const step = this.speed / deltaTime;
     this.position.x += this.vx * step;
     this.position.y += this.vy * step;

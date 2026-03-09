@@ -1,3 +1,4 @@
+// Boss/miniboss enemy. Main game loop handles advanced behavior and firing.
 export default class MEnemy {
   constructor(gameWidth, img) {
     this.width = 100;

@@ -21,6 +21,13 @@ import { playShoot, playExplosion, playCollect, playGameOver, playBossExplosion,
 
 // ─── Canvas Setup ────────────────────────────────────────────────────────────
 const GameScreen = document.getElementById("GameScreen");
+const homeScreen = document.getElementById("homeScreen");
+const startMissionBtn = document.getElementById("startMissionBtn");
+const controlsModal = document.getElementById("controlsModal");
+const closeControlsBtn = document.getElementById("closeControlsBtn");
+const finalBossFailModal = document.getElementById("finalBossFailModal");
+const finalBossFailScore = document.getElementById("finalBossFailScore");
+const finalBossRetryBtn = document.getElementById("finalBossRetryBtn");
 document.addEventListener("contextmenu", (e) => e.preventDefault());
 document.addEventListener("selectstart", (e) => e.preventDefault());
 document.addEventListener("dblclick", (e) => e.preventDefault());
@@ -35,6 +42,19 @@ const ctx = GameScreen.getContext("2d");
 
 let GameWidth = innerWidth;
 let GameHeight = innerHeight;
+
+// Keep canvas/game bounds responsive to viewport changes.
+window.addEventListener("resize", () => {
+  GameWidth = innerWidth;
+  GameHeight = innerHeight;
+  GameScreen.width = GameWidth;
+  GameScreen.height = GameHeight;
+  galacticBackground.resize(GameWidth, GameHeight);
+  paddle.gameWidth = GameWidth;
+  paddle.gameHeight = GameHeight;
+  paddle.position.x = Math.max(0, Math.min(paddle.position.x, GameWidth - paddle.width));
+  paddle.position.y = Math.max(0, Math.min(paddle.position.y, GameHeight - paddle.height));
+});
 
 // ─── Level Theme Palettes ────────────────────────────────────────────────────
 const LEVEL_THEMES = [
@@ -81,10 +101,18 @@ let healthImg = new Image();
 
 let imagesResolved = 0;
 const totalImages = 5;
+let launchWhenReady = false;
 
 function onImageSettled() {
   imagesResolved++;
-  if (imagesResolved >= totalImages) gameState = "start";
+  if (imagesResolved >= totalImages) {
+    gameState = "start";
+    if (launchWhenReady) {
+      launchWhenReady = false;
+      hideHomeScreen();
+      startNewRun();
+    }
+  }
 }
 
 [playerImg, enemyImg, bossImg, bulletImg, healthImg].forEach((img) => {
@@ -93,7 +121,16 @@ function onImageSettled() {
 });
 
 // Hard timeout: never hang longer than 4 seconds
-setTimeout(() => { if (gameState === "loading") gameState = "start"; }, 4000);
+setTimeout(() => {
+  if (gameState === "loading") {
+    gameState = "start";
+    if (launchWhenReady) {
+      launchWhenReady = false;
+      hideHomeScreen();
+      startNewRun();
+    }
+  }
+}, 4000);
 
 playerImg.src = 'https://i.ibb.co/TYHmXbK/player.png';
 enemyImg.src  = 'https://i.ibb.co/Hd3LbdZ/enemy.png';
@@ -135,6 +172,7 @@ let levelStartScore = 0;
 let zoneBannerUntil = 0;
 const FINAL_LEVEL = LEVEL_THEMES.length;
 let finalBossSpawned = false;
+let failedFinalBoss = false;
 let gameWon = false;
 let paused = false;
 let upgradeOptions = [];
@@ -150,6 +188,80 @@ let activeBulletBooster = null;
 let bulletBoosterEndTime = 0;
 let bulletBoosterLabel = "";
 let lastBulletBoosterSpawn = 0;
+
+// DOM modal shown when the player fails during the final boss phase.
+function hideFinalBossFailModal() {
+  if (!finalBossFailModal) return;
+  finalBossFailModal.classList.remove("is-visible");
+  finalBossFailModal.setAttribute("aria-hidden", "true");
+}
+
+function showFinalBossFailModal() {
+  if (!finalBossFailModal) return;
+  if (finalBossFailScore) finalBossFailScore.textContent = "SCORE: " + score.toLocaleString();
+  finalBossFailModal.classList.add("is-visible");
+  finalBossFailModal.setAttribute("aria-hidden", "false");
+}
+
+function startNewRun(timestamp = performance.now()) {
+  // Centralized reset/start flow reused by keyboard/touch/button interactions.
+  hideFinalBossFailModal();
+  restartGame();
+  gameState = "playing";
+  startEngine();
+  createPauseButton();
+  createAutoShootButton();
+  startLevel(timestamp);
+  beginAutoFire();
+}
+
+if (finalBossRetryBtn) {
+  finalBossRetryBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    startNewRun();
+  });
+}
+
+function hideHomeScreen() {
+  if (!homeScreen) return;
+  homeScreen.classList.add("is-hidden");
+}
+
+function showHomeScreen() {
+  if (!homeScreen) return;
+  homeScreen.classList.remove("is-hidden");
+}
+
+if (startMissionBtn) {
+  startMissionBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    hideHomeScreen();
+    if (gameState === "loading") {
+      launchWhenReady = true;
+      return;
+    }
+    if (gameState === "start" || gameState === "gameover" || gameState === "won") {
+      startNewRun();
+    }
+  });
+}
+
+if (closeControlsBtn && controlsModal) {
+  closeControlsBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    controlsModal.classList.remove("is-visible");
+    controlsModal.setAttribute("aria-hidden", "true");
+  });
+}
+
+if (controlsModal) {
+  controlsModal.addEventListener("click", (e) => {
+    if (e.target === controlsModal) {
+      controlsModal.classList.remove("is-visible");
+      controlsModal.setAttribute("aria-hidden", "true");
+    }
+  });
+}
 
 // ─── Paddle & Input ───────────────────────────────────────────────────────────
 let paddle = new Paddle(GameWidth, GameHeight, playerImg);
@@ -252,13 +364,27 @@ function togglePause() {
 
 // ─── Screen-transition listeners ─────────────────────────────────────────────
 function handleStartTransition(e) {
+  if (homeScreen && !homeScreen.classList.contains("is-hidden")) return;
   if (e && e.target && (e.target.id === "pauseBtn" || e.target.id === "autoShootBtn")) return;
+  if (e && e.target && (e.target.id === "finalBossRetryBtn" || e.target.closest?.("#finalBossFailModal"))) return;
   if (gameState === "upgrade") return;
-  if (gameState === "start")    { gameState = "playing"; startEngine(); createPauseButton(); createAutoShootButton(); startLevel(performance.now()); beginAutoFire(); return; }
-  if (gameState === "gameover") { restartGame(); gameState = "playing"; startEngine(); createPauseButton(); createAutoShootButton(); startLevel(performance.now()); beginAutoFire(); return; }
-  if (gameState === "won")      { restartGame(); gameState = "playing"; startEngine(); createPauseButton(); createAutoShootButton(); startLevel(performance.now()); beginAutoFire(); return; }
+  if (gameState === "start")    { startNewRun(performance.now()); return; }
+  if (gameState === "gameover") { startNewRun(performance.now()); return; }
+  if (gameState === "won")      { startNewRun(performance.now()); return; }
 }
 document.addEventListener("keydown", (e) => {
+  if (homeScreen && !homeScreen.classList.contains("is-hidden")) {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      hideHomeScreen();
+      if (gameState === "loading") {
+        launchWhenReady = true;
+      } else if (gameState === "start" || gameState === "gameover" || gameState === "won") {
+        startNewRun();
+      }
+    }
+    return;
+  }
   if (gameState === "upgrade") {
     if (e.key === "1" || e.key === "2" || e.key === "3") {
       handleUpgradeChoice(parseInt(e.key, 10) - 1, performance.now());
@@ -383,6 +509,17 @@ function triggerHitFeedback(strength, timestamp) {
 }
 
 function buildObjective(timestamp) {
+  if (level === FINAL_LEVEL) {
+    return {
+      type: "boss",
+      text: "Defeat the Final Boss",
+      target: 1,
+      progress: 0,
+      startTime: timestamp,
+      endTime: Infinity,
+      completed: false,
+    };
+  }
   const isSurvive = level % 2 === 0;
   if (isSurvive) {
     const duration = Math.min(26000, 16000 + level * 800);
@@ -426,6 +563,9 @@ function updateObjectiveProgress(timestamp) {
     if (timestamp >= objective.endTime) completeObjective(timestamp);
   } else if (objective.type === "kills") {
     if (timestamp >= objective.endTime) objective = null;
+  } else if (objective.type === "boss") {
+    objective.progress = gameWon ? 1 : 0;
+    if (gameWon) completeObjective(timestamp);
   }
 }
 
@@ -468,8 +608,10 @@ function spawnEnemy() {
   if (enemies.length >= maxOnScreen) return;
   if (level <= 2 && Math.random() > 0.55) return;
 
-  // FIX: Always spawn 1, occasionally 2 when the screen is calm
-  const count = (level >= 6 && enemies.length < maxOnScreen - 2 && Math.random() < 0.25) ? 2 : 1;
+  // FIX: Always spawn 1, occasionally 2 when the screen is calm.
+  // Level 1 gets a 20% chance for an extra enemy to increase total pressure by ~20%.
+  const levelOneBurst = level === 1 && enemies.length < maxOnScreen - 1 && Math.random() < 0.20;
+  const count = levelOneBurst ? 2 : ((level >= 6 && enemies.length < maxOnScreen - 2 && Math.random() < 0.25) ? 2 : 1);
 
   for (let i = 0; i < count; i++) {
     if (enemies.length >= maxOnScreen) break;
@@ -751,19 +893,21 @@ function drawObjective(timestamp, theme) {
 
   ctx.save();
   const cx = GameWidth / 2;
-  const y = 22;
+  const compact = GameWidth < 760;
+  const y = compact ? 56 : 22;
   const label = completed ? "OBJECTIVE COMPLETE" : (timestamp < objectiveBannerUntil ? "NEW OBJECTIVE" : "OBJECTIVE");
   const value = completed ? "+250 SCORE + POWER CORE" : objective.text;
+  const w = Math.max(170, Math.min(320, GameWidth * (compact ? 0.7 : 0.32)));
+  const h = compact ? 5 : 4;
 
   ctx.textAlign = "center";
   ctx.fillStyle = completed ? "#ffd24d" : theme.accent;
-  ctx.font = "700 10px Orbitron, sans-serif";
+  ctx.font = compact ? "700 9px Orbitron, sans-serif" : "700 10px Orbitron, sans-serif";
   ctx.fillText(label, cx, y);
   ctx.fillStyle = "rgba(220,220,245,0.8)";
-  ctx.font = "500 12px Rajdhani, sans-serif";
+  ctx.font = compact ? "600 11px Rajdhani, sans-serif" : "500 12px Rajdhani, sans-serif";
   ctx.fillText(value, cx, y + 14);
 
-  const w = 180, h = 4;
   roundedRect(ctx, cx - w / 2, y + 20, w, h, 2);
   ctx.fillStyle = "rgba(255,255,255,0.08)"; ctx.fill();
   const prog = completed ? 1 : Math.max(0, Math.min(1, objective.progress / objective.target));
@@ -931,9 +1075,10 @@ function drawPauseScreen() {
 
   if (objective && !objective.completed) {
     const oProg = Math.round((objective.progress / objective.target) * 100);
+    const compact = GameWidth < 760;
     ctx.fillStyle = "rgba(120,210,255,0.7)";
-    ctx.font = "600 11px Rajdhani, sans-serif";
-    ctx.fillText("OBJECTIVE  " + objective.text + "  (" + Math.min(100, Math.max(0, oProg)) + "%)", cx, cy + 100);
+    ctx.font = compact ? "600 10px Rajdhani, sans-serif" : "600 11px Rajdhani, sans-serif";
+    ctx.fillText("OBJECTIVE  " + objective.text + "  (" + Math.min(100, Math.max(0, oProg)) + "%)", cx, cy + 100, Math.max(220, GameWidth - 120));
   }
 
   ctx.textAlign = "left";
@@ -1052,9 +1197,15 @@ function drawGameOverScreen() {
   ctx.fillStyle = "rgba(255,200,55,0.8)";
   ctx.font = "600 16px Rajdhani, sans-serif";
   ctx.fillText("BEST   " + highScore.toLocaleString(), cx, cy + 28);
-  ctx.fillStyle = "rgba(170,170,220,0.6)";
-  ctx.font = "400 12px Rajdhani, sans-serif";
-  ctx.fillText("Reached: " + LEVEL_THEMES[Math.min(level - 1, LEVEL_THEMES.length - 1)].name, cx, cy + 52);
+  if (failedFinalBoss) {
+    ctx.fillStyle = "rgba(255,150,170,0.85)";
+    ctx.font = "600 13px Rajdhani, sans-serif";
+    ctx.fillText("Final Boss escaped in ASCENSION CORE", cx, cy + 52);
+  } else {
+    ctx.fillStyle = "rgba(170,170,220,0.6)";
+    ctx.font = "400 12px Rajdhani, sans-serif";
+    ctx.fillText("Reached: " + LEVEL_THEMES[Math.min(level - 1, LEVEL_THEMES.length - 1)].name, cx, cy + 52);
+  }
 
   const pulse = 0.68 + 0.32 * Math.sin(Date.now() * 0.0028);
   ctx.globalAlpha = pulse;
@@ -1298,7 +1449,13 @@ function gameLoop(timestamp) {
       playBossExplosion(); mEnemies.splice(i, 1); continue;
     }
     if (mEnemies[i].position.y > GameHeight) {
-      if (!shieldActive) health -= 50;
+      // The final boss escaping means the run failed.
+      if (mEnemies[i].isFinal) {
+        failedFinalBoss = true;
+        health = 0;
+      } else if (!shieldActive) {
+        health -= 50;
+      }
       triggerHitFeedback(8, timestamp);
       mEnemies.splice(i, 1); continue;
     }
@@ -1314,6 +1471,9 @@ function gameLoop(timestamp) {
             const wasFinal = mEnemies[i].isFinal;
             playBossExplosion(); mEnemies.splice(i, 1); enemiesKilled++; recordKill(3, timestamp); updateShooterPower();
             if (wasFinal) {
+              if (objective && objective.type === "boss" && !objective.completed) {
+                completeObjective(timestamp);
+              }
               if (score > highScore) { highScore = score; localStorage.setItem("spaceShooterHighScore", String(highScore)); }
               gameState = "won"; gameWon = true; playVictory(); stopHoldShoot(true); removePauseButton(); removeAutoShootButton();
             }
@@ -1442,7 +1602,8 @@ function gameLoop(timestamp) {
       stopHoldShoot(true);
       gameState = "upgrade";
     } else {
-      scoreForNextLevel += 999999;
+      // Final level has no further progression tiers.
+      scoreForNextLevel = Number.POSITIVE_INFINITY;
       playLevelUp();
       zoneBannerUntil = timestamp + 2800;
     }
@@ -1453,6 +1614,12 @@ function gameLoop(timestamp) {
     died = true;
     if (score > highScore) { highScore = score; localStorage.setItem("spaceShooterHighScore", String(highScore)); }
     gameState = "gameover"; stopHoldShoot(true); stopEngine(); playGameOver(); removePauseButton(); removeAutoShootButton();
+    if (level === FINAL_LEVEL && finalBossSpawned && !gameWon) {
+      failedFinalBoss = true;
+      showFinalBossFailModal();
+    } else {
+      hideFinalBossFailModal();
+    }
   }
 
   requestAnimationFrame(gameLoop);
@@ -1487,12 +1654,15 @@ function restartGame() {
   bulletBoosterEndTime = 0;
   bulletBoosterLabel = "";
   lastBulletBoosterSpawn = 0;
-  finalBossSpawned = false; gameWon = false; paused = false;
+  finalBossSpawned = false; failedFinalBoss = false; gameWon = false; paused = false;
   objective = null; objectiveBannerUntil = 0; objectiveCompleteUntil = 0;
   shakeUntil = 0; shakeMagnitude = 0; hitFlashAlpha = 0;
   lastEnemySpawn = 0; lastBossSpawn = 0;
   lastHealthSpawn = 0; lastShieldSpawn = 0; lastPowerSpawn = 0;
+  hideFinalBossFailModal();
+  hideHomeScreen();
 }
 
 // ─── Kick it off ─────────────────────────────────────────────────────────────
 requestAnimationFrame(gameLoop);
+

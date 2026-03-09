@@ -1,3 +1,4 @@
+// Bridges keyboard, mouse, and touch input to paddle movement.
 export default class InputHanderler {
   constructor(paddle, GameWidth, gameScreen, GameHeight) {
     const canvas = gameScreen || document.getElementById("GameScreen");
@@ -6,6 +7,7 @@ export default class InputHanderler {
 
     function getCanvasCoords(clientX, clientY) {
       if (!canvas) return { x: paddle.position.x, y: paddle.position.y };
+      // Convert browser pixels into canvas coordinates.
       const rect = canvas.getBoundingClientRect();
       const scaleX = canvas.width / rect.width;
       const scaleY = canvas.height / rect.height;
@@ -17,8 +19,12 @@ export default class InputHanderler {
 
     function setPaddleFromPointer(clientX, clientY) {
       const { x: canvasX, y: canvasY } = getCanvasCoords(clientX, clientY);
-      const x = Math.max(0, Math.min(canvasX - paddle.width / 2, GameWidth - paddle.width));
-      const y = Math.max(0, Math.min(canvasY - paddle.height / 2, GameHeight - paddle.height));
+      // Use live bounds so control remains correct after viewport/canvas resize.
+      const liveWidth = canvas ? canvas.width : (paddle.gameWidth || GameWidth);
+      const liveHeight = canvas ? canvas.height : (paddle.gameHeight || GameHeight);
+      // Clamp movement inside game bounds.
+      const x = Math.max(0, Math.min(canvasX - paddle.width / 2, liveWidth - paddle.width));
+      const y = Math.max(0, Math.min(canvasY - paddle.height / 2, liveHeight - paddle.height));
       paddle.position.x = x;
       paddle.position.y = y;
       paddle.speed = 0;

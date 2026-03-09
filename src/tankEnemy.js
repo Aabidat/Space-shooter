@@ -1,5 +1,6 @@
 import Enemy from "/src/enemy.js";
 
+// Heavy enemy archetype with extra health and a visible HP bar.
 export default class TankEnemy extends Enemy {
   constructor(gameWidth, img, level = 1) {
     super(gameWidth, img, {

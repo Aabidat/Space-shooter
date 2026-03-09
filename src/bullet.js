@@ -1,5 +1,6 @@
 import { drawStylizedBullet } from "/src/bulletVisual.js";
 
+// Main center bullet fired by the player.
 export default class Bullet {
   constructor(paddle, img, style = {}) {
     const scale = Math.max(0.6, style.scale ?? 1);
@@ -32,12 +33,13 @@ export default class Bullet {
   }
 
   draw(ctx) {
+    // Rendering is delegated so all bullet variants share one visual system.
     drawStylizedBullet(ctx, this);
   }
 
   update(deltaTime) {
     if (!deltaTime) return;
-
+    // Moves upward in screen coordinates.
     this.position.y -= this.speed / deltaTime;
   }
 }

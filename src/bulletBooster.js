@@ -1,3 +1,4 @@
+// Temporary pickup that changes bullet visual style and behavior for a duration.
 const BULLET_BOOSTER_VARIANTS = [
   {
     id: "prismatic",
@@ -31,6 +32,7 @@ const BULLET_BOOSTER_VARIANTS = [
 
 export default class BulletBooster {
   constructor(gameWidth) {
+    // Random variant keeps runs visually different.
     this.variant = BULLET_BOOSTER_VARIANTS[Math.floor(Math.random() * BULLET_BOOSTER_VARIANTS.length)];
     this.width = 32;
     this.height = 32;
@@ -72,6 +74,7 @@ export default class BulletBooster {
   update(deltaTime) {
     if (!deltaTime) return;
     this.rotation += this.spinSpeed * deltaTime;
+    // Falls down toward the player.
     this.position.y += this.speed * (deltaTime / 1000);
   }
 }

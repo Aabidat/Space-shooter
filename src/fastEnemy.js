@@ -1,5 +1,6 @@
 import Enemy from "/src/enemy.js";
 
+// Lightweight enemy archetype: low HP, high speed.
 export default class FastEnemy extends Enemy {
   constructor(gameWidth, img, level = 1) {
     super(gameWidth, img, {

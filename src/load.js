@@ -1,3 +1,4 @@
+// Simple progress bar used by the loading screen.
 export default class Load {
 
   constructor(gameWidth, gameHeight, fill) {
@@ -26,6 +27,7 @@ export default class Load {
 
     ctx.fillRect(this.position.x, this.position.y, this.width, this.height);
 
+    // Maps percentage fill (0-100) to the inside bar width.
     ctx.fillStyle = 'green';
 
     ctx.fillRect(this.position.x + this.offset, this.position.y + this.offset, mapRange(this.fill, 0, 100, 0, this.width - this.offset), this.height - (this.offset * 2));

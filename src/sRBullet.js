@@ -1,5 +1,6 @@
 import { drawStylizedBullet } from "/src/bulletVisual.js";
 
+// Right side bullet spawned with the center bullet to create spread fire.
 export default class SRBullet {
   constructor(bullet, img, style = {}) {
     const scale = Math.max(0.6, style.scale ?? 0.8);

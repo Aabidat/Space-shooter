@@ -1,3 +1,4 @@
+// Falling pickup that restores player health on contact.
 export default class HealthPack {
   constructor(GameWidth, img) {
     this.width = 40;
@@ -11,6 +12,7 @@ export default class HealthPack {
   }
 
   draw(ctx) {
+    // Draw sprite when loaded, otherwise show a fallback square.
     if (this.img && this.img.complete) {
       ctx.drawImage(
         this.img,
@@ -27,6 +29,7 @@ export default class HealthPack {
 
   update(deltaTime) {
     if (!deltaTime) return;
+    // Moves downward over time.
     this.position.y += this.speed * (deltaTime / 1000);
   }
 }

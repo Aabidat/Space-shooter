@@ -13,15 +13,17 @@
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style type="text/css" media="all">
     :root {
-      --space-dark: #050410;
-      --space-mid: #0d0a28;
-      --space-light: #1a1540;
-      --accent: #00d4ff;
-      --accent-dim: rgba(0, 212, 255, 0.4);
+      --bg-0: #020617;
+      --bg-1: #081127;
+      --bg-2: #0d1a3a;
+      --accent: #38bdf8;
+      --accent-2: #22d3ee;
+      --accent-3: #14b8a6;
+      --danger: #fb7185;
       --glass: rgba(255, 255, 255, 0.06);
-      --glass-border: rgba(255, 255, 255, 0.12);
-      --text: #e8e8ff;
-      --text-dim: rgba(232, 232, 255, 0.8);
+      --glass-border: rgba(148, 163, 184, 0.26);
+      --text: #e2e8f0;
+      --text-dim: rgba(226, 232, 240, 0.78);
     }
 
     * {
@@ -43,7 +45,7 @@
     }
 
     body {
-      background: linear-gradient(165deg, #050410 0%, #0a0820 25%, #0d0a28 50%, #080618 75%, #040310 100%);
+      background: linear-gradient(155deg, var(--bg-0) 0%, var(--bg-1) 42%, var(--bg-2) 100%);
       background-size: 200% 200%;
       animation: galactic-drift 18s ease-in-out infinite;
       color: var(--text);
@@ -67,6 +69,256 @@
 
 
 
+    .home-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 140;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 26px;
+      background:
+        radial-gradient(1100px 520px at 12% 22%, rgba(34, 211, 238, 0.18), transparent 55%),
+        radial-gradient(900px 460px at 92% 82%, rgba(56, 189, 248, 0.14), transparent 60%),
+        rgba(2, 6, 23, 0.78);
+      backdrop-filter: blur(10px);
+    }
+
+    .home-screen.is-hidden {
+      display: none;
+    }
+
+    .hero-panel {
+      width: min(1060px, 100%);
+      border: 1px solid var(--glass-border);
+      border-radius: 26px;
+      background: linear-gradient(160deg, rgba(9, 15, 38, 0.94), rgba(4, 10, 28, 0.94));
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      min-height: min(84vh, 680px);
+    }
+
+    .hero-main {
+      padding: 44px 44px 30px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 18px;
+      background:
+        radial-gradient(560px 220px at 20% 8%, rgba(34, 211, 238, 0.2), transparent 70%),
+        radial-gradient(420px 280px at 74% 70%, rgba(56, 189, 248, 0.12), transparent 72%);
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      width: fit-content;
+      border: 1px solid rgba(56, 189, 248, 0.5);
+      color: #b6f3ff;
+      background: rgba(56, 189, 248, 0.13);
+      border-radius: 999px;
+      padding: 7px 12px;
+      font: 700 11px/1 Orbitron, sans-serif;
+      letter-spacing: 1.1px;
+    }
+
+    .hero-title {
+      font: 900 clamp(34px, 6vw, 72px)/0.95 Orbitron, sans-serif;
+      letter-spacing: 1px;
+      color: #e2f7ff;
+      text-shadow: 0 0 34px rgba(34, 211, 238, 0.18);
+    }
+
+    .hero-subtitle {
+      max-width: 56ch;
+      color: var(--text-dim);
+      font: 600 clamp(15px, 2.2vw, 20px)/1.42 Rajdhani, sans-serif;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+
+    .hero-btn {
+      border-radius: 13px;
+      border: 1px solid rgba(56, 189, 248, 0.55);
+      padding: 12px 18px;
+      min-width: 180px;
+      background: linear-gradient(120deg, rgba(56, 189, 248, 0.2), rgba(20, 184, 166, 0.12));
+      color: #e6fbff;
+      cursor: pointer;
+      font: 800 12px Orbitron, sans-serif;
+      letter-spacing: 0.9px;
+      transition: transform 0.16s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+    }
+
+    .hero-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 12px 25px rgba(34, 211, 238, 0.22);
+      border-color: rgba(34, 211, 238, 0.9);
+    }
+
+    .hero-btn.secondary {
+      border-color: rgba(148, 163, 184, 0.45);
+      background: rgba(15, 23, 42, 0.58);
+      color: #d5dee9;
+    }
+
+    .hero-grid {
+      display: grid;
+      gap: 11px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      margin-top: 12px;
+    }
+
+    .hero-chip {
+      border: 1px solid rgba(56, 189, 248, 0.32);
+      border-radius: 12px;
+      padding: 12px;
+      background: rgba(15, 23, 42, 0.52);
+    }
+
+    .hero-chip .k {
+      font: 800 16px Orbitron, sans-serif;
+      color: #7dd3fc;
+    }
+
+    .hero-chip .v {
+      margin-top: 5px;
+      color: #a8b6cc;
+      font: 600 12px Rajdhani, sans-serif;
+    }
+
+    .hero-side {
+      padding: 26px 24px;
+      border-left: 1px solid rgba(148, 163, 184, 0.16);
+      background: linear-gradient(185deg, rgba(7, 14, 34, 0.95), rgba(2, 9, 25, 0.95));
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      justify-content: center;
+    }
+
+    .panel-title {
+      color: #bae6fd;
+      font: 800 14px Orbitron, sans-serif;
+      letter-spacing: 0.9px;
+    }
+
+    .control-item {
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      background: rgba(15, 23, 42, 0.55);
+      border-radius: 12px;
+      padding: 10px 12px;
+      color: #cdd7e5;
+      font: 600 13px/1.35 Rajdhani, sans-serif;
+    }
+
+    .control-item strong {
+      color: #67e8f9;
+      font-weight: 700;
+    }
+
+    .home-note {
+      margin-top: 5px;
+      color: #93a7c3;
+      font: 500 12px/1.35 Rajdhani, sans-serif;
+    }
+
+    .controls-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 180;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      background: rgba(2, 6, 23, 0.74);
+      backdrop-filter: blur(8px);
+    }
+
+    .controls-modal.is-visible {
+      display: flex;
+    }
+
+    .controls-card {
+      width: min(640px, 96vw);
+      border-radius: 18px;
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      background: linear-gradient(170deg, rgba(9, 15, 38, 0.96), rgba(4, 10, 28, 0.96));
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+      padding: 20px;
+    }
+
+    .controls-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .controls-title {
+      color: #baf1ff;
+      font: 800 15px Orbitron, sans-serif;
+      letter-spacing: 0.8px;
+    }
+
+    .controls-close {
+      border: 1px solid rgba(148, 163, 184, 0.4);
+      border-radius: 10px;
+      background: rgba(15, 23, 42, 0.64);
+      color: #cbd5e1;
+      font: 700 11px Orbitron, sans-serif;
+      letter-spacing: 0.7px;
+      padding: 8px 10px;
+      cursor: pointer;
+    }
+
+    @media (max-width: 980px) {
+      .hero-panel {
+        grid-template-columns: 1fr;
+      }
+
+      .hero-side {
+        border-left: none;
+        border-top: 1px solid rgba(148, 163, 184, 0.16);
+      }
+
+      .hero-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 620px) {
+      .home-screen {
+        padding: 12px;
+      }
+
+      .hero-main {
+        padding: 24px 18px 16px;
+      }
+
+      .hero-side {
+        padding: 18px 14px;
+      }
+
+      .hero-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .hero-actions {
+        flex-direction: column;
+      }
+
+      .hero-btn {
+        width: 100%;
+      }
+    }
+
     .glow-overlay {
       position: fixed;
       inset: 0;
@@ -74,6 +326,82 @@
       background: radial-gradient(ellipse 120% 80% at 50% 30%, rgba(80, 50, 140, 0.06) 0%, transparent 50%);
       animation: glow-pulse 8s ease-in-out infinite;
       z-index: 1;
+    }
+
+    .boss-fail-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      background: rgba(5, 3, 12, 0.8);
+      backdrop-filter: blur(8px);
+    }
+
+    .boss-fail-modal.is-visible {
+      display: flex;
+    }
+
+    .boss-fail-card {
+      width: min(560px, 94vw);
+      border-radius: 18px;
+      border: 1px solid rgba(255, 98, 124, 0.38);
+      background: linear-gradient(160deg, rgba(40, 8, 18, 0.96), rgba(16, 6, 26, 0.96));
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55), 0 0 38px rgba(255, 82, 114, 0.18);
+      padding: 26px 24px 22px;
+      color: #f5eaff;
+      text-align: center;
+    }
+
+    .boss-fail-title {
+      font: 900 28px/1.1 'Orbitron', sans-serif;
+      color: #ff5e72;
+      letter-spacing: 1px;
+      margin-bottom: 10px;
+      text-shadow: 0 0 20px rgba(255, 94, 114, 0.4);
+    }
+
+    .boss-fail-copy {
+      margin: 0 auto;
+      max-width: 470px;
+      color: rgba(240, 228, 255, 0.88);
+      font: 600 18px/1.4 'Rajdhani', sans-serif;
+    }
+
+    .boss-fail-subcopy {
+      margin-top: 8px;
+      color: rgba(184, 174, 212, 0.9);
+      font: 500 14px/1.4 'Rajdhani', sans-serif;
+      letter-spacing: 0.2px;
+    }
+
+    .boss-fail-score {
+      margin-top: 14px;
+      color: #ffd24e;
+      font: 700 17px/1.2 'Orbitron', sans-serif;
+      letter-spacing: 0.4px;
+    }
+
+    .boss-fail-btn {
+      margin-top: 18px;
+      border: 1px solid rgba(0, 212, 255, 0.5);
+      border-radius: 12px;
+      padding: 12px 18px;
+      min-width: 210px;
+      background: linear-gradient(135deg, rgba(0, 212, 255, 0.2), rgba(0, 212, 255, 0.05));
+      color: #dbf7ff;
+      cursor: pointer;
+      font: 800 13px 'Orbitron', sans-serif;
+      letter-spacing: 0.9px;
+      transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+    }
+
+    .boss-fail-btn:hover {
+      transform: translateY(-1px);
+      border-color: rgba(0, 212, 255, 0.9);
+      box-shadow: 0 8px 22px rgba(0, 212, 255, 0.25);
     }
 
     @keyframes glow-pulse {
@@ -86,7 +414,67 @@
 <body>
   <canvas id="GameScreen" width="1000" height="800"></canvas>
 
+  <section id="homeScreen" class="home-screen" aria-label="Game home screen">
+    <div class="hero-panel">
+      <div class="hero-main">
+        <span class="eyebrow">TACTICAL ARCADE COMBAT</span>
+        <h1 class="hero-title">SPACE<br>SHOOTER</h1>
+        <p class="hero-subtitle">
+          Pilot your flagship through escalating sectors, complete dynamic mission objectives, and defeat the Final Boss in Ascension Core.
+        </p>
+        <div class="hero-actions">
+          <button id="startMissionBtn" class="hero-btn" type="button">START MISSION</button>
+        </div>
+        <div class="hero-grid">
+          <div class="hero-chip">
+            <div class="k">15</div>
+            <div class="v">Hand-crafted level themes</div>
+          </div>
+          <div class="hero-chip">
+            <div class="k">3</div>
+            <div class="v">Objective types with rewards</div>
+          </div>
+          <div class="hero-chip">
+            <div class="k">∞</div>
+            <div class="v">Replayable score grinding</div>
+          </div>
+        </div>
+      </div>
+      <aside class="hero-side" id="controlsPanel">
+        <h2 class="panel-title">MISSION CONTROLS</h2>
+        <div class="control-item"><strong>Move:</strong> Drag (mouse/touch) or Arrow keys</div>
+        <div class="control-item"><strong>Fire:</strong> Hold click/touch, press <strong>F</strong> for auto-fire</div>
+        <div class="control-item"><strong>Pause:</strong> Press <strong>P</strong> or <strong>Esc</strong></div>
+        <div class="control-item"><strong>Objective:</strong> Complete level task to earn bonus score + core</div>
+        <div class="control-item"><strong>Goal:</strong> Reach Sector 15 and eliminate the Final Boss</div>
+        <p class="home-note">Tip: prioritize shield and power core pickups during boss waves.</p>
+      </aside>
+    </div>
+  </section>
+  <div id="controlsModal" class="controls-modal" aria-hidden="true">
+    <div class="controls-card">
+      <div class="controls-head">
+        <h3 class="controls-title">MISSION CONTROLS</h3>
+        <button id="closeControlsBtn" class="controls-close" type="button">CLOSE</button>
+      </div>
+      <div class="control-item"><strong>Move:</strong> Drag (mouse/touch) or Arrow keys</div>
+      <div class="control-item"><strong>Fire:</strong> Hold click/touch, press <strong>F</strong> for auto-fire</div>
+      <div class="control-item"><strong>Pause:</strong> Press <strong>P</strong> or <strong>Esc</strong></div>
+      <div class="control-item"><strong>Objective:</strong> Complete level task to earn bonus score + core</div>
+      <div class="control-item"><strong>Goal:</strong> Reach Sector 15 and eliminate the Final Boss</div>
+    </div>
+  </div>
+
   <div class="glow-overlay"></div>
+  <div id="finalBossFailModal" class="boss-fail-modal" aria-hidden="true">
+    <div class="boss-fail-card">
+      <h2 class="boss-fail-title">FINAL BOSS FAILED</h2>
+      <p class="boss-fail-copy">Your fleet could not neutralize the Final Boss in Sector 15.</p>
+      <p class="boss-fail-subcopy">Refit your build, return to Ascension Core, and try a stronger strategy.</p>
+      <p id="finalBossFailScore" class="boss-fail-score">SCORE: 0</p>
+      <button id="finalBossRetryBtn" class="boss-fail-btn" type="button">REDEPLOY FLEET</button>
+    </div>
+  </div>
   <script src="src/main.js" type="module"></script>
 </body>
 

@@ -2,6 +2,7 @@ function hsla(h, s, l, a = 1) {
   return `hsla(${Math.round(h)}, ${Math.round(s)}%, ${Math.round(l)}%, ${a})`;
 }
 
+// Shared renderer used by all player bullets to keep style logic in one place.
 export function drawStylizedBullet(ctx, bullet) {
   const style = bullet.style || {};
   const shape = style.shape || "bolt";

@@ -1,3 +1,4 @@
+// Falling pickup that grants temporary shield protection.
 export default class ShieldPack {
   constructor(gameWidth, img) {
     this.width = 40;
@@ -11,6 +12,7 @@ export default class ShieldPack {
   }
 
   draw(ctx) {
+    // Uses image if available, otherwise a procedural fallback icon.
     if (this.img) {
       ctx.drawImage(
         this.img,
@@ -40,6 +42,7 @@ export default class ShieldPack {
 
   update(deltaTime) {
     if (!deltaTime) return;
+    // Legacy movement formula retained for gameplay feel parity.
     this.position.y += this.speed / deltaTime;
   }
 }

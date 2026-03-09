@@ -1,5 +1,6 @@
 import Enemy from "/src/enemy.js";
 
+// Enemy archetype that sways horizontally while descending.
 export default class ZigzagEnemy extends Enemy {
   constructor(gameWidth, img, level = 1) {
     super(gameWidth, img, {
